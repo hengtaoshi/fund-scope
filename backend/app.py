@@ -8,10 +8,18 @@ from flask import Flask, jsonify, request, send_from_directory
 # 确保能找到同级模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import re
+import shutil
+from functools import wraps
 from fund_data import get_fund_nav, get_fund_info, get_fund_manager, search_fund
-from database import init_db, add_holding, get_all_holdings, get_holding, update_holding, delete_holding
+from database import init_db, add_holding, get_all_holdings, get_holding, update_holding, delete_holding, get_user_by_email, create_user
 from fund_analysis import calc_indicators, calc_signals, calc_score
 from email_sender import send_report, test_connection as test_smtp
+from config import CACHE_DIR
+from auth import (
+    sign_jwt, verify_jwt, verify_password, hash_password,
+    send_verification_code, check_verification_code, check_rate_limit,
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_DIR = os.path.join(os.path.dirname(BASE_DIR), "frontend")
@@ -21,11 +29,126 @@ init_db()
 
 app = Flask(__name__)
 
+# ====== JWT 中间件 ======
+
+
+def login_required(f):
+    """JWT 登录校验装饰器"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return jsonify({"error": "未登录"}), 401
+        token = auth.split(" ", 1)[1]
+        payload = verify_jwt(token)
+        if not payload:
+            return jsonify({"error": "登录已过期，请重新登录"}), 401
+        request.current_user = payload
+        return f(*args, **kwargs)
+    return decorated
+
+
+
 
 @app.route("/api/health")
 def health():
     """健康检查"""
     return jsonify({"status": "ok", "service": "基金驾驶舱"})
+
+
+@app.route("/api/clear-cache")
+@login_required
+def api_clear_cache():
+    """清除所有数据缓存，下次请求重新抓取"""
+    if os.path.exists(CACHE_DIR):
+        for f in os.listdir(CACHE_DIR):
+            fp = os.path.join(CACHE_DIR, f)
+            try:
+                os.remove(fp)
+            except OSError as e:
+                print(f"[WARN] 清除缓存文件失败 {fp}: {e}")
+    return jsonify({"success": True, "message": "缓存已清除"})
+
+# ====== 认证 API ======
+
+
+@app.route("/api/auth/send-code", methods=["POST"])
+def api_send_code():
+    """发送邮箱验证码"""
+    data = request.get_json(force=True)
+    email = (data.get("email") or "").strip()
+    if not email or "@" not in email:
+        return jsonify({"error": "请输入有效邮箱"}), 400
+    result = send_verification_code(email)
+    status = 200 if result["success"] else 400
+    return jsonify(result), status
+
+
+@app.route("/api/auth/register", methods=["POST"])
+def api_register():
+    """注册：验证码校验 + 设置密码"""
+    data = request.get_json(force=True)
+    email = (data.get("email") or "").strip()
+    code = (data.get("code") or "").strip()
+    password = data.get("password") or ""
+
+    if not email or "@" not in email:
+        return jsonify({"error": "请输入有效邮箱"}), 400
+    if not code or len(code) != 6:
+        return jsonify({"error": "请输入 6 位验证码"}), 400
+    if len(password) < 6:
+        return jsonify({"error": "密码至少 6 位"}), 400
+    if not re.search(r'[a-zA-Z]', password) or not re.search(r'\d', password):
+        return jsonify({"error": "密码需包含字母和数字"}), 400
+
+    # 验证码校验
+    if not check_verification_code(email, code):
+        return jsonify({"error": "验证码错误或已过期"}), 400
+
+    # 检查是否已注册
+    if get_user_by_email(email):
+        return jsonify({"error": "该邮箱已注册"}), 400
+
+    # 创建用户
+    pw_hash = hash_password(password)
+    user = create_user(email, pw_hash)
+
+    # 签发令牌
+    token = sign_jwt(user, email)
+    return jsonify({"success": True, "token": token, "email": email}), 201
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_login():
+    """登录：邮箱 + 密码"""
+    data = request.get_json(force=True)
+    email = (data.get("email") or "").strip()
+    password = data.get("password") or ""
+
+    if not email or not password:
+        return jsonify({"error": "请输入邮箱和密码"}), 400
+
+    # IP 限流：同一 IP 5 次失败后锁定 15 分钟
+    ip = request.remote_addr or "unknown"
+    if not check_rate_limit(ip, max_attempts=5, window_seconds=900):
+        return jsonify({"error": "登录尝试过于频繁，请 15 分钟后再试"}), 429
+
+    user = get_user_by_email(email)
+    if not user or not verify_password(password, user["password_hash"]):
+        return jsonify({"error": "邮箱或密码错误"}), 401
+
+    token = sign_jwt(user["id"], email)
+    return jsonify({"success": True, "token": token, "email": email})
+
+
+@app.route("/api/auth/me")
+@login_required
+def api_me():
+    """获取当前登录用户信息"""
+    return jsonify({
+        "user_id": request.current_user["user_id"],
+        "email": request.current_user["email"],
+    })
 
 
 @app.route("/api/fund/<code>")
@@ -131,10 +254,11 @@ def analysis_score(code: str):
 
 
 @app.route("/api/portfolio/analysis")
+@login_required
 def portfolio_analysis():
     """组合综合评分"""
     from database import get_all_holdings
-    holdings = get_all_holdings()
+    holdings = get_all_holdings(request.current_user['user_id'])
     if not holdings:
         return jsonify({"error": "暂无持仓"}), 404
 
@@ -172,12 +296,14 @@ def portfolio_analysis():
 
 
 @app.route("/api/portfolio", methods=["GET"])
+@login_required
 def portfolio_list():
     """获取全部持仓（含实时市值）"""
-    holdings = get_all_holdings()
+    force = request.args.get("force", "").lower() == "true"
+    holdings = get_all_holdings(request.current_user['user_id'])
     results = []
     for h in holdings:
-        nav_df = get_fund_nav(h["code"])
+        nav_df = get_fund_nav(h["code"], force_refresh=force)
         latest_nav = float(nav_df["单位净值"].iloc[-1]) if not nav_df.empty else 0
         cost_total = h["shares"] * h["cost_nav"]
         current_total = h["shares"] * latest_nav
@@ -199,6 +325,7 @@ def portfolio_list():
 
 
 @app.route("/api/portfolio", methods=["POST"])
+@login_required
 def portfolio_add():
     """添加持仓"""
     data = request.get_json(force=True)
@@ -218,14 +345,15 @@ def portfolio_add():
     info = get_fund_info(code)
     name = info.get("fund_name", code) if info else code
 
-    holding_id = add_holding(code, name, shares, cost_nav, notes)
+    holding_id = add_holding(request.current_user['user_id'], code, name, shares, cost_nav, notes)
     return jsonify({"id": holding_id, "name": name}), 201
 
 
 @app.route("/api/portfolio/<int:holding_id>", methods=["PUT"])
+@login_required
 def portfolio_update(holding_id: int):
     """更新持仓"""
-    holding = get_holding(holding_id)
+    holding = get_holding(holding_id, request.current_user['user_id'])
     if not holding:
         return jsonify({"error": "持仓不存在"}), 404
 
@@ -239,14 +367,15 @@ def portfolio_update(holding_id: int):
     if cost_nav is not None and cost_nav <= 0:
         return jsonify({"error": "成本净值必须大于 0"}), 400
 
-    ok = update_holding(holding_id, shares, cost_nav, notes)
+    ok = update_holding(holding_id, request.current_user['user_id'], shares, cost_nav, notes)
     return jsonify({"updated": ok}), 200 if ok else 304
 
 
 @app.route("/api/portfolio/<int:holding_id>", methods=["DELETE"])
+@login_required
 def portfolio_delete(holding_id: int):
     """删除持仓"""
-    ok = delete_holding(holding_id)
+    ok = delete_holding(holding_id, request.current_user['user_id'])
     return jsonify({"deleted": ok}), 200 if ok else 404
 
 
@@ -254,6 +383,7 @@ def portfolio_delete(holding_id: int):
 
 
 @app.route("/api/send-report", methods=["POST"])
+@login_required
 def api_send_report():
     """发送加仓报告"""
     data = request.get_json(force=True)
@@ -261,7 +391,7 @@ def api_send_report():
 
     # 获取持仓分析数据
     from database import get_all_holdings
-    holdings = get_all_holdings()
+    holdings = get_all_holdings(request.current_user['user_id'])
     if not holdings:
         return jsonify({"success": False, "message": "暂无持仓"}), 400
 
@@ -304,6 +434,7 @@ def api_send_report():
 
 
 @app.route("/api/test-email", methods=["POST"])
+@login_required
 def api_test_email():
     """测试 SMTP 连接"""
     result = test_smtp()
@@ -316,7 +447,14 @@ def api_test_email():
 
 @app.route("/")
 def serve_frontend():
+    """主页面（需登录）"""
     return send_from_directory(FRONTEND_DIR, "index.html")
+
+
+@app.route("/login")
+def serve_login():
+    """登录页面"""
+    return send_from_directory(FRONTEND_DIR, "login.html")
 
 
 @app.route("/js/<path:filename>")
@@ -329,7 +467,13 @@ def serve_css(filename):
     return send_from_directory(os.path.join(FRONTEND_DIR, "css"), filename)
 
 
+@app.route("/webfonts/<path:filename>")
+def serve_webfonts(filename):
+    return send_from_directory(os.path.join(FRONTEND_DIR, "webfonts"), filename)
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
-    print(f"基金驾驶舱后端启动 http://127.0.0.1:{port}")
-    app.run(host="0.0.0.0", port=port, debug=True)
+    debug = os.getenv("FLASK_DEBUG", "0").lower() in ("1", "true")
+    print(f"基金驾驶舱后端启动 http://127.0.0.1:{port}  debug={debug}")
+    app.run(host="0.0.0.0", port=port, debug=debug)

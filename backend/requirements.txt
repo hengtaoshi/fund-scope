@@ -2,3 +2,4 @@ flask>=3.0
 akshare>=1.14
 pandas>=2.0
 numpy>=1.24
+pyjwt>=2.0

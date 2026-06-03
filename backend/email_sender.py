@@ -8,8 +8,10 @@ import smtplib
 import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.header import Header
+from email.utils import formataddr
 from datetime import datetime
-from config import SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM
+from config import SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, FROM_NAME
 
 
 def _build_html_report(report_data: dict) -> str:
@@ -102,7 +104,8 @@ def send_report(to_email: str, report_data: dict) -> dict:
 
     try:
         msg = MIMEMultipart("alternative")
-        msg["From"] = EMAIL_FROM or SMTP_USER
+        sender_addr = EMAIL_FROM or SMTP_USER
+        msg["From"] = formataddr((FROM_NAME, sender_addr))
         msg["To"] = to_email
         msg["Subject"] = f"基金驾驶舱 · 加仓建议报告 ({datetime.now().strftime('%Y-%m-%d')})"
 
@@ -116,7 +119,7 @@ def send_report(to_email: str, report_data: dict) -> dict:
             server.starttls()
 
         server.login(SMTP_USER, SMTP_PASS)
-        server.sendmail(msg["From"], [to_email], msg.as_string())
+        server.sendmail(sender_addr, [to_email], msg.as_string())
         server.quit()
 
         return {"success": True, "message": f"报告已发送至 {to_email}"}

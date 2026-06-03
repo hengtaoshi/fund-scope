@@ -1,0 +1,27 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 项目文档（非运行必需）
+PLAN.md
+REVIEW.md
+DEV-PROGRESS.md
+FIX-PLAN.md
+index.html

@@ -9,12 +9,16 @@ const crosshairPlugin = {
     id: 'crosshair',
     afterDraw: function(chart) {
         if (!chart._active || !chart._active.length) return;
-        const ctx = chart.ctx;
         const active = chart._active[0];
-        const x = active.element.x;
+        if (!active || !active.element || typeof active.element.x !== 'number') return;
+        const ctx = chart.ctx;
+        if (!ctx) return;
         const yAxis = chart.scales.y;
         const xAxis = chart.scales.x;
+        if (!yAxis || !xAxis || typeof yAxis.top !== 'number' || typeof xAxis.left !== 'number') return;
+        if (typeof active.element.y !== 'number') return;
 
+        const x = active.element.x;
         ctx.save();
         // 竖虚线
         ctx.beginPath();
@@ -44,13 +48,21 @@ const crosshairPlugin = {
     }
 };
 
-// 注册插件
-Chart.register(crosshairPlugin);
+// 注册插件（Chart.js 可能从 CDN 异步加载，防御性处理）
+if (typeof Chart !== 'undefined') {
+    try { Chart.register(crosshairPlugin); } catch(e) { console.warn('Chart.register 失败:', e); }
+}
 
 // ====== 工具 ======
 function $(id) { return document.getElementById(id); }
 function qs(sel, ctx) { return (ctx || document).querySelector(sel); }
 function qsa(sel, ctx) { return (ctx || document).querySelectorAll(sel); }
+
+function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
 
 function showToast(msg) {
     const t = $('toast');
@@ -58,12 +70,28 @@ function showToast(msg) {
     clearTimeout(t._timer); t._timer = setTimeout(() => t.classList.remove('show'), 3000);
 }
 
+function getToken() {
+    return localStorage.getItem('fund_token') || '';
+}
+
 async function api(url, opts = {}) {
     try {
+        const headers = {
+            'Content-Type': 'application/json',
+            ...opts.headers,
+        };
+        const token = getToken();
+        if (token) headers['Authorization'] = 'Bearer ' + token;
         const res = await fetch(API + url, {
-            headers: { 'Content-Type': 'application/json', ...opts.headers },
+            headers,
             ...opts
         });
+        if (res.status === 401) {
+            // 登录过期，跳转登录页
+            localStorage.removeItem('fund_token');
+            window.location.href = '/login';
+            return null;
+        }
         return await res.json();
     } catch (e) {
         showToast('网络错误: ' + e.message);
@@ -132,19 +160,53 @@ function switchFund(code) {
 function setChartPeriod(period) {
     chartPeriod = period;
     if (selectedFund) renderLineChart(selectedFund, period);
+    document.querySelectorAll('.period-btn').forEach(el => {
+        if (!el.getAttribute('onclick')?.includes('setChartPeriod')) return;
+        const isActive = el.dataset.period === period;
+        el.style.background = isActive ? '#c7883c' : '#f0ebe2';
+        el.style.color = isActive ? '#fff' : '#5a544a';
+    });
 }
 
 function setDetailPeriod(period) {
     detailPeriod = period;
     renderDetailChart(window._detailNavData, period);
+    document.querySelectorAll('.period-btn').forEach(el => {
+        if (!el.getAttribute('onclick')?.includes('setDetailPeriod')) return;
+        const isActive = el.dataset.period === period;
+        el.style.background = isActive ? '#c7883c' : '#f0ebe2';
+        el.style.color = isActive ? '#fff' : '#5a544a';
+    });
 }
 
 function periodBtn(label, period, active) {
-    return `<span class="period-btn ${active ? 'active' : ''}" onclick="setChartPeriod('${period}')" style="cursor:pointer;padding:2px 10px;border-radius:4px;font-size:12px;${active ? 'background:#c7883c;color:#fff;' : 'background:#f0ebe2;color:#5a544a;'}margin-left:4px;">${label}</span>`;
+    return `<span class="period-btn ${active ? 'active' : ''}" data-period="${period}" onclick="setChartPeriod('${period}')" style="cursor:pointer;padding:2px 10px;border-radius:4px;font-size:12px;${active ? 'background:#c7883c;color:#fff;' : 'background:#f0ebe2;color:#5a544a;'}margin-left:4px;">${label}</span>`;
+}
+
+let _refreshTimer = null;
+let _lastForceRefreshTime = 0;
+
+function updateLastRefreshTime() {
+    const el = $('lastRefreshTime');
+    if (el) {
+        const now = new Date();
+        el.textContent = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    }
+}
+
+async function autoRefresh(force) {
+    if (force) {
+        // 先清缓存
+        await api('/api/clear-cache');
+    }
+    // 重新渲染当前页面
+    await renderPage(currentPage);
 }
 
 async function renderPage(page) {
     currentPage = page;
+    // 清除旧定时器
+    if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
     const content = $('content');
     const fns = {
         dashboard: renderDashboard,
@@ -156,9 +218,45 @@ async function renderPage(page) {
     };
     content.innerHTML = '<div class="loading"><div class="spinner"></div>加载中...</div>';
     if (fns[page]) await fns[page](content);
+    // 更新最后刷新时间
+    updateLastRefreshTime();
+    // 所有页面开启自动刷新：每 5 分钟自动更新数据
+    // 每 30 分钟强制清除缓存重新抓取
+    _refreshTimer = setInterval(() => {
+        const now = Date.now();
+        const force = (now - _lastForceRefreshTime) > 1800000; // 30分钟
+        if (force) _lastForceRefreshTime = now;
+        autoRefresh(force);
+    }, 300000); // 5分钟
 }
 
 // ====== 概览 ======
+async function autoRefreshDashboard() {
+    const data = await api('/api/portfolio');
+    if (!data || !data.holdings || data.holdings.length === 0) return;
+    const h = data.holdings;
+    window._holdingsList = h;
+    // 更新统计卡片
+    const totalVal = h.reduce((s, x) => s + x.current_total, 0);
+    const totalCost = h.reduce((s, x) => s + x.cost_total, 0);
+    const totalProfit = totalVal - totalCost;
+    const totalPct = totalCost > 0 ? totalProfit / totalCost * 100 : 0;
+    const cards = qsa('.stat-value');
+    if (cards.length >= 4) {
+        cards[0].textContent = fmtMoney(totalVal);
+        cards[1].textContent = fmtMoney(totalProfit);
+        cards[1].className = 'stat-value ' + cls(totalProfit);
+        const changeEl = cards[1].nextElementSibling;
+        if (changeEl) { changeEl.textContent = fmtPct(totalPct); changeEl.className = 'stat-change ' + cls(totalProfit); }
+    }
+    // 更新饼图
+    renderPieChart(h);
+    // 更新折线图（强制刷新缓存）
+    if (selectedFund) {
+        const canvas = $('lineChart');
+        if (canvas) renderLineChart(selectedFund, chartPeriod, true);
+    }
+}
 async function renderDashboard(el) {
     const data = await api('/api/portfolio');
     if (!data || !data.holdings || data.holdings.length === 0) {
@@ -209,9 +307,10 @@ function genColors(n) {
 }
 
 function renderPieChart(holdings) {
+    if (typeof Chart === 'undefined') return;
     const canvas = $('pieChart');
     if (!canvas) return;
-    if (chartInstances.pie) chartInstances.pie.destroy();
+    if (chartInstances.pie) { try { chartInstances.pie.destroy(); } catch (e) { /* ignore */ } chartInstances.pie = null; }
     chartInstances.pie = new Chart(canvas, {
         type: 'doughnut',
         data: {
@@ -222,22 +321,28 @@ function renderPieChart(holdings) {
     });
 }
 
-async function renderLineChart(code, period) {
+async function renderLineChart(code, period, forceRefresh) {
+    if (typeof Chart === 'undefined') return;
     const canvas = $('lineChart');
     if (!canvas) return;
-    const d = await api(`/api/fund/${code}/nav`);
+    const d = await api(`/api/fund/${code}/nav${forceRefresh ? '?force=true' : ''}`);
     if (!d || !d.data) return;
     const data = filterByPeriod(d.data, period || chartPeriod);
     const labels = data.map(x => x.日期);
     const values = data.map(x => x.单位净值);
+    // 预先计算均分刻度位置（首尾必含，中间均分）
+    const targetCount = { '1m': 7, '3m': 10, '6m': 12, '1y': 12 }[period] || 10;
+    chartInstances.lineTickSet = new Set();
+    for (let i = 0; i < targetCount; i++) {
+        chartInstances.lineTickSet.add(Math.round(i * (labels.length - 1) / (targetCount - 1)));
+    }
 
     if (chartInstances.line) {
-        // 更新数据，不销毁重建
-        chartInstances.line.data.labels = labels;
-        chartInstances.line.data.datasets[0].data = values;
-        chartInstances.line.update();
-        return;
+        // 切页回来画布被 content.innerHTML 重建，旧 Chart 指向幽灵画布，无条件销毁重建
+        try { chartInstances.line.destroy(); } catch (e) { /* ignore */ }
+        chartInstances.line = null;
     }
+    chartInstances.linePeriod = period;
 
     chartInstances.line = new Chart(canvas, {
         type: 'line',
@@ -270,20 +375,15 @@ async function renderLineChart(code, period) {
                     grid: { display: false },
                     ticks: {
                         font: { size: 10 }, color: '#8a847a',
-                        maxTicksLimit: 8,
                         maxRotation: 0,
+                        autoSkip: false,
                         callback: function(val, idx) {
                             const label = this.getLabelForValue(val);
                             if (!label) return '';
-                            // 只显示每月第一个标签（取日期前7位 YYYY-MM 判断是否变化）
-                            const m = label.slice(0, 7);
-                            if (idx === 0 || m !== this.getLabelForValue(this.ticks[idx-1]?.value || 0)?.slice(0,7)) {
-                                return label.slice(5); // MM-DD
-                            }
+                            if (chartInstances.lineTickSet?.has(val)) return label.slice(5);
                             return '';
                         }
-                    },
-                    title: { display: true, text: '日期', color: '#8a847a', font: { size: 12 } }
+                    }
                 }
             }
         }
@@ -470,7 +570,7 @@ async function searchFund() {
         </div>
         ` : ''}
         <div class="card"><div class="card-title"><i class="fas fa-chart-line"></i> 净值走势
-        <span style="margin-left:auto">${['1月','3月','6月','1年'].map((l,i) => `<span class="period-btn ${detailPeriod === ['1m','3m','6m','1y'][i] ? 'active' : ''}" onclick="setDetailPeriod('${['1m','3m','6m','1y'][i]}')" style="cursor:pointer;padding:2px 10px;border-radius:4px;font-size:12px;${detailPeriod === ['1m','3m','6m','1y'][i] ? 'background:#c7883c;color:#fff;' : 'background:#f0ebe2;color:#5a544a;'}margin-left:4px;">${l}</span>`).join('')}</span>
+        <span style="margin-left:auto">${['1月','3月','6月','1年'].map((l,i) => `<span class="period-btn ${detailPeriod === ['1m','3m','6m','1y'][i] ? 'active' : ''}" data-period="${['1m','3m','6m','1y'][i]}" onclick="setDetailPeriod('${['1m','3m','6m','1y'][i]}')" style="cursor:pointer;padding:2px 10px;border-radius:4px;font-size:12px;${detailPeriod === ['1m','3m','6m','1y'][i] ? 'background:#c7883c;color:#fff;' : 'background:#f0ebe2;color:#5a544a;'}margin-left:4px;">${l}</span>`).join('')}</span>
         </div><div class="chart-wrapper"><canvas id="detailChart"></canvas></div></div>
         ${analysis && analysis.signals && analysis.signals.summary ? `
         <div class="card"><div class="card-title"><i class="fas fa-chart-bar"></i> 技术信号</div>
@@ -489,22 +589,38 @@ async function searchFund() {
             <div style="margin-top:8px;font-size:14px;font-weight:500;">建议: <span style="color:${analysis.score.total_score >= 70 ? '#c62828' : analysis.score.total_score >= 50 ? '#b8860b' : '#2e7d32'}">${analysis.score.action}</span></div>
         </div>` : ''}`;
 
+    window._detailNavData = nav.data;
     setTimeout(() => renderDetailChart(nav.data, detailPeriod), 50);
 }
 
 function renderDetailChart(data, period) {
+    if (typeof Chart === 'undefined') return;
     const canvas = $('detailChart');
     if (!canvas) return;
     data = filterByPeriod(data, period || detailPeriod);
     const labels = data.map(x => x.日期);
     const values = data.map(x => x.单位净值);
+    // 预先计算均分刻度位置（首尾必含，中间均分）
+    const targetCount = { '1m': 7, '3m': 10, '6m': 12, '1y': 12 }[period] || 10;
+    chartInstances.detailTickSet = new Set();
+    for (let i = 0; i < targetCount; i++) {
+        chartInstances.detailTickSet.add(Math.round(i * (labels.length - 1) / (targetCount - 1)));
+    }
 
     if (chartInstances.detail) {
-        chartInstances.detail.data.labels = labels;
-        chartInstances.detail.data.datasets[0].data = values;
-        chartInstances.detail.update();
-        return;
+        // 画布可能已被 searchFund 替换（innerHTML 重建），旧 Chart 指向幽灵画布
+        if (chartInstances.detail.canvas !== canvas) {
+            chartInstances.detail.destroy();
+            chartInstances.detail = null;
+        } else {
+            chartInstances.detailPeriod = period;
+            chartInstances.detail.data.labels = labels;
+            chartInstances.detail.data.datasets[0].data = values;
+            chartInstances.detail.update();
+            return;
+        }
     }
+    chartInstances.detailPeriod = period;
     chartInstances.detail = new Chart(canvas, {
         type: 'line',
         data: {
@@ -532,18 +648,15 @@ function renderDetailChart(data, period) {
                     grid: { display: false },
                     ticks: {
                         font: { size: 10 }, color: '#8a847a',
-                        maxTicksLimit: 8, maxRotation: 0,
+                        maxRotation: 0,
+                        autoSkip: false,
                         callback: function(val, idx) {
                             const label = this.getLabelForValue(val);
                             if (!label) return '';
-                            const m = label.slice(0, 7);
-                            if (idx === 0 || m !== this.getLabelForValue(this.ticks[idx-1]?.value || 0)?.slice(0,7)) {
-                                return label.slice(5);
-                            }
+                            if (chartInstances.detailTickSet?.has(val)) return label.slice(5);
                             return '';
                         }
-                    },
-                    title: { display: true, text: '日期', color: '#8a847a', font: { size: 12 } }
+                    }
                 }
             }
         }
@@ -571,7 +684,10 @@ async function renderPredict(el) {
         <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
             <div><div class="stat-label">组合综合评分</div><div style="font-size:32px;font-weight:700;color:#c7883c;">${avg} <span style="font-size:14px;color:#b5aea0;">/ 100</span></div></div>
             <div style="text-align:center;"><div style="font-size:20px;">${avg >= 70 ? '⭐⭐⭐⭐' : avg >= 50 ? '⭐⭐⭐' : '⭐⭐'}</div><div style="font-size:14px;font-weight:600;">${avg >= 70 ? '良好' : avg >= 50 ? '一般' : '较差'}</div></div>
-            <div style="text-align:right;"><div class="stat-label">建议操作</div><div style="font-size:16px;font-weight:600;color:#c62828;">买入 ${buyN} 只</div></div>
+            <div style="text-align:right;">
+                <div class="stat-label">建议操作</div><div style="font-size:16px;font-weight:600;color:#c62828;">买入 ${buyN} 只</div>
+                <button class="btn btn-primary btn-sm" onclick="sendReport()" style="margin-top:8px;"><i class="fas fa-envelope"></i> 发送报告</button>
+            </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
         ${scores.map(x => {
@@ -601,6 +717,23 @@ async function renderPredict(el) {
                 <div><div style="background:#555;color:#fff;padding:4px;border-radius:4px;font-weight:600;">0-29</div><div style="color:#555;margin-top:4px;">差质</div><div style="color:#555;">建议卖出</div></div>
             </div>
         </div>`;
+}
+
+let _lastReportTime = 0;
+async function sendReport() {
+    const email = window._emailAddr || $('emailAddr')?.value;
+    if (!email) { showToast('请先在「设置」页面配置接收邮箱'); return; }
+    const elapsed = Date.now() - _lastReportTime;
+    if (elapsed < 30000) {
+        showToast(`⏳ 请 ${Math.ceil((30000 - elapsed)/1000)} 秒后再发送`);
+        return;
+    }
+    _lastReportTime = Date.now();
+    const res = await api('/api/send-report', {
+        method: 'POST',
+        body: JSON.stringify({ email })
+    });
+    showToast(res?.message || '请求失败');
 }
 
 // ====== 工具 ======
@@ -641,7 +774,7 @@ function renderSettings(el) {
     el.innerHTML = `
     <div class="card" style="max-width:560px;">
         <div class="card-title"><i class="fas fa-envelope"></i> 邮件通知</div>
-        <div class="form-group"><label>接收邮箱</label><input id="emailAddr" placeholder="your@email.com" /></div>
+        <div class="form-group"><label>接收邮箱</label><input id="emailAddr" placeholder="your@email.com" value="${window._emailAddr||''}" oninput="window._emailAddr=this.value" /></div>
         <button class="btn btn-primary" onclick="sendTestEmail()"><i class="fas fa-paper-plane"></i> 测试邮件</button>
         <div style="margin-top:8px;font-size:12px;color:#b5aea0;">SMTP 配置通过后端环境变量设置</div>
     </div>
@@ -668,9 +801,36 @@ async function sendTestEmail() {
 }
 
 async function clearCache() {
-    // Call a special endpoint to clear cache (or just reload)
-    showToast('缓存已清除（需后端支持）');
+    const res = await api('/api/clear-cache');
+    if (res?.success) {
+        showToast('缓存已清除，正在刷新数据...');
+        await renderPage(currentPage);
+    } else {
+        showToast('清除缓存失败');
+    }
+}
+
+
+// ====== 退出登录 ======
+
+function logout() {
+    localStorage.removeItem('fund_token');
+    window.location.href = '/login';
 }
 
 // ====== 启动 ======
-renderPage('dashboard');
+// 检查登录状态，未登录跳转登录页
+(async function() {
+    const token = getToken();
+    if (!token) {
+        window.location.href = '/login';
+        return;
+    }
+    // 验证 token 有效性
+    const res = await api('/api/auth/me');
+    if (!res || res.error) {
+        window.location.href = '/login';
+        return;
+    }
+    renderPage('dashboard');
+})();

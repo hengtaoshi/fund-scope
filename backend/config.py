@@ -9,6 +9,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "")
+FROM_NAME = os.getenv("FROM_NAME", "基金驾驶舱")  # 发件人显示名称，隐藏个人邮箱
 
 # 数据缓存
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "data", "cache")
