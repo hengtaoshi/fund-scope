@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>基金驾驶舱</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<aside class="sidebar" id="sidebar">
+  <div class="brand"><i class="fas fa-chart-line"></i> 基金驾驶舱</div>
+  <nav class="nav" id="nav">
+    <a class="nav-item active" data-page="dashboard"><i class="fas fa-th-large"></i> 概览</a>
+    <a class="nav-item" data-page="portfolio"><i class="fas fa-briefcase"></i> 持仓</a>
+    <a class="nav-item" data-page="analysis"><i class="fas fa-search"></i> 分析</a>
+    <a class="nav-item" data-page="predict"><i class="fas fa-brain"></i> 智能预测</a>
+    <a class="nav-item" data-page="tools"><i class="fas fa-calculator"></i> 工具</a>
+    <a class="nav-item" data-page="settings"><i class="fas fa-cog"></i> 设置</a>
+  </nav>
+  <div class="sidebar-footer" id="sidebarFooter">数据加载中...</div>
+</aside>
+<main class="main">
+  <header class="topbar">
+    <button class="menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')"><i class="fas fa-bars"></i></button>
+    <div>
+      <h1 id="pageTitle">概览</h1>
+      <span class="subtitle" id="pageSubtitle">今日数据 · 实时估算</span>
+    </div>
+    <div><button class="btn btn-primary" onclick="location.reload()"><i class="fas fa-sync-alt"></i> 刷新</button></div>
+  </header>
+  <div class="content" id="content"></div>
+</main>
+<div class="toast" id="toast"></div>
+<script src="/js/app.js"></script>
+</body>
+</html>

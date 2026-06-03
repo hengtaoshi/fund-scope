@@ -1,0 +1,1851 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>我的基金驾驶舱</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
+    <style>
+        /* ========== 全局重置 ========== */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+            background: #faf7f2;
+            color: #1a1816;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* ========== 侧边栏 ========== */
+        .sidebar {
+            width: 220px;
+            min-height: 100vh;
+            background: #2c2a26;
+            color: #d4cdc0;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0; left: 0;
+            z-index: 100;
+            transition: transform .3s;
+        }
+        .sidebar-brand {
+            padding: 24px 20px 20px;
+            font-size: 18px;
+            font-weight: 700;
+            color: #f5ede0;
+            letter-spacing: .5px;
+            border-bottom: 1px solid #3d3a34;
+        }
+        .sidebar-brand i { color: #c7883c; margin-right: 10px; }
+        .sidebar-nav { flex: 1; padding: 12px 0; }
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 11px 20px;
+            font-size: 14px;
+            color: #b5aea0;
+            cursor: pointer;
+            transition: all .15s;
+            border-left: 3px solid transparent;
+        }
+        .nav-item:hover { color: #f5ede0; background: #36332e; }
+        .nav-item.active {
+            color: #f5ede0;
+            background: #3d3a34;
+            border-left-color: #c7883c;
+        }
+        .nav-item i { width: 18px; text-align: center; font-size: 15px; }
+        .nav-item .badge {
+            margin-left: auto;
+            background: #c7883c;
+            color: #1a1816;
+            font-size: 11px;
+            padding: 1px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+        }
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid #3d3a34;
+            font-size: 12px;
+            color: #8a847a;
+        }
+
+        /* ========== 主内容区 ========== */
+        .main {
+            margin-left: 220px;
+            flex: 1;
+            padding: 0;
+            min-height: 100vh;
+        }
+
+        /* ========== 顶部导航 ========== */
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 32px;
+            background: #fff;
+            border-bottom: 1px solid #e8e0d4;
+        }
+        .topbar-left { display: flex; align-items: center; gap: 16px; }
+        .topbar-left h1 { font-size: 20px; font-weight: 600; color: #1a1816; }
+        .topbar-left .subtitle { font-size: 13px; color: #8a847a; }
+        .topbar-right { display: flex; align-items: center; gap: 12px; }
+        .topbar-right .date { font-size: 13px; color: #8a847a; }
+        .btn {
+            padding: 8px 18px;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all .15s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-primary { background: #c7883c; color: #fff; }
+        .btn-primary:hover { background: #b0742e; }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid #d4cdc0;
+            color: #5a544a;
+        }
+        .btn-outline:hover { border-color: #c7883c; color: #c7883c; }
+        .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+        /* ========== 页面容器 ========== */
+        .page { display: none; padding: 24px 32px; }
+        .page.active { display: block; }
+
+        /* ========== 概览 - 统计卡片 ========== */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: #fff;
+            border-radius: 10px;
+            padding: 20px 24px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.05);
+        }
+        .stat-card .label { font-size: 13px; color: #8a847a; margin-bottom: 6px; }
+        .stat-card .value { font-size: 26px; font-weight: 700; color: #1a1816; }
+        .stat-card .change {
+            font-size: 13px;
+            margin-top: 4px;
+            font-weight: 500;
+        }
+        .stat-card .change.up { color: #c62828; }
+        .stat-card .change.down { color: #2e7d32; }
+        .stat-card .icon {
+            float: right;
+            font-size: 28px;
+            color: #c7883c;
+            opacity: .6;
+        }
+
+        /* ========== 图表行 ========== */
+        .charts-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .chart-card {
+            background: #fff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.05);
+        }
+        .chart-card .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1816;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .chart-card .card-title i { color: #c7883c; }
+        .chart-wrapper { height: 260px; position: relative; }
+
+        /* ========== 表格 ========== */
+        .table-card {
+            background: #fff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.05);
+        }
+        .table-card .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1816;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .table-card .card-title i { color: #c7883c; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        thead th {
+            text-align: left;
+            padding: 10px 12px;
+            color: #8a847a;
+            font-weight: 500;
+            border-bottom: 1px solid #e8e0d4;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: .3px;
+        }
+        tbody td {
+            padding: 12px;
+            border-bottom: 1px solid #f0ebe2;
+        }
+        tbody tr:hover { background: #fdf9f2; }
+        .tag {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .tag.up { background: #ffebee; color: #c62828; }
+        .tag.down { background: #e8f5e9; color: #2e7d32; }
+        .fund-name { font-weight: 500; color: #1a1816; }
+        .fund-code { color: #8a847a; font-size: 12px; }
+        .text-up { color: #c62828; font-weight: 500; }
+        .text-down { color: #2e7d32; font-weight: 500; }
+
+        /* ========== 基金分析页 ========== */
+        .detail-header {
+            background: #fff;
+            border-radius: 10px;
+            padding: 24px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.05);
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .detail-header .name { font-size: 20px; font-weight: 700; color: #1a1816; }
+        .detail-header .code { font-size: 13px; color: #8a847a; margin-top: 2px; }
+        .detail-header .price { font-size: 32px; font-weight: 700; color: #1a1816; }
+        .detail-header .price-change { font-size: 15px; font-weight: 500; }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .metric-card {
+            background: #fff;
+            border-radius: 10px;
+            padding: 16px 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.05);
+            text-align: center;
+        }
+        .metric-card .m-label { font-size: 12px; color: #8a847a; margin-bottom: 6px; }
+        .metric-card .m-value { font-size: 20px; font-weight: 700; color: #1a1816; }
+        .metric-card .m-sub { font-size: 12px; color: #8a847a; margin-top: 2px; }
+
+        /* ========== 定投计算器 ========== */
+        .calc-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .calc-card {
+            background: #fff;
+            border-radius: 10px;
+            padding: 24px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.05);
+        }
+        .form-group { margin-bottom: 16px; }
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: #1a1816;
+            margin-bottom: 6px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #d4cdc0;
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color .15s;
+            background: #faf7f2;
+        }
+        .form-group input:focus { border-color: #c7883c; }
+        .calc-result-card {
+            background: #fff;
+            border-radius: 10px;
+            padding: 24px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.05);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+        .calc-result-card .big-num { font-size: 42px; font-weight: 700; color: #c7883c; }
+        .calc-result-card .big-num-label { font-size: 13px; color: #8a847a; margin-top: 4px; }
+        .calc-result-card .detail-line { font-size: 14px; color: #5a544a; margin-top: 12px; }
+
+        /* ========== 设置页 ========== */
+        .settings-card {
+            background: #fff;
+            border-radius: 10px;
+            padding: 24px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.05);
+            max-width: 560px;
+        }
+        .settings-card .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 0;
+            border-bottom: 1px solid #f0ebe2;
+        }
+        .settings-card .setting-item:last-child { border-bottom: none; }
+        .setting-item .s-label { font-size: 14px; color: #1a1816; }
+        .setting-item .s-desc { font-size: 12px; color: #8a847a; margin-top: 2px; }
+        .toggle {
+            width: 40px; height: 22px;
+            background: #d4cdc0;
+            border-radius: 11px;
+            position: relative;
+            cursor: pointer;
+            transition: background .2s;
+        }
+        .toggle.on { background: #c7883c; }
+        .toggle::after {
+            content: '';
+            position: absolute;
+            top: 2px; left: 2px;
+            width: 18px; height: 18px;
+            background: #fff;
+            border-radius: 50%;
+            transition: transform .2s;
+        }
+        .toggle.on::after { transform: translateX(18px); }
+
+        /* ========== 响应式 ========== */
+        @media (max-width: 900px) {
+            .stats-row { grid-template-columns: repeat(2, 1fr); }
+            .charts-row { grid-template-columns: 1fr; }
+            .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+            .calc-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 640px) {
+            .sidebar { transform: translateX(-220px); }
+            .sidebar.open { transform: translateX(0); }
+            .main { margin-left: 0; }
+            .stats-row { grid-template-columns: 1fr 1fr; }
+            .topbar { padding: 12px 16px; }
+            .page { padding: 16px; }
+            .metrics-grid { grid-template-columns: 1fr 1fr; }
+        }
+        /* ========== 弹窗 ========== */
+        .modal-overlay {
+            display: none;
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,.4);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal-box {
+            background: #fff;
+            border-radius: 12px;
+            width: 560px;
+            max-width: 94vw;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 8px 40px rgba(0,0,0,.15);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid #e8e0d4;
+        }
+        .modal-title { font-size: 16px; font-weight: 600; color: #1a1816; }
+        .modal-close {
+            background: none; border: none;
+            font-size: 24px; color: #8a847a;
+            cursor: pointer; padding: 0 4px;
+        }
+        .modal-close:hover { color: #1a1816; }
+        .modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 24px;
+        }
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 16px 24px;
+            border-top: 1px solid #e8e0d4;
+        }
+
+        /* ========== Toast ========== */
+        .toast {
+            position: fixed;
+            bottom: 32px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2c2a26;
+            color: #f5ede0;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 2000;
+            opacity: 0;
+            transition: opacity .3s;
+            pointer-events: none;
+            box-shadow: 0 4px 20px rgba(0,0,0,.2);
+        }
+        .toast.show { opacity: 1; }
+
+        /* 移动端菜单按钮 */
+        .menu-toggle {
+            display: none;
+            background: none; border: none;
+            font-size: 20px; color: #1a1816;
+            cursor: pointer;
+        }
+        @media (max-width: 640px) {
+            .menu-toggle { display: block; }
+        }
+
+        /* ========== 滚动条美化 ========== */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #d4cdc0; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #b5aea0; }
+    </style>
+</head>
+<body>
+
+<!-- ====== 侧边栏 ====== -->
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+        <i class="fas fa-chart-line"></i> 基金驾驶舱
+    </div>
+    <nav class="sidebar-nav">
+        <div class="nav-item active" data-page="dashboard">
+            <i class="fas fa-th-large"></i> 概览
+            <span class="badge">4</span>
+        </div>
+        <div class="nav-item" data-page="portfolio">
+            <i class="fas fa-briefcase"></i> 持仓
+        </div>
+        <div class="nav-item" data-page="analysis">
+            <i class="fas fa-search"></i> 分析
+        </div>
+        <div class="nav-item" data-page="tools">
+            <i class="fas fa-calculator"></i> 工具
+        </div>
+        <div class="nav-item" data-page="predict">
+            <i class="fas fa-brain"></i> 智能预测
+            <span class="badge">AI</span>
+        </div>
+        <div class="nav-item" data-page="settings">
+            <i class="fas fa-cog"></i> 设置
+        </div>
+    </nav>
+    <div class="sidebar-footer">
+        <i class="fas fa-shield-alt"></i> 数据最后更新: 今日
+    </div>
+</aside>
+
+<!-- ====== 主内容 ====== -->
+<div class="main">
+
+    <!-- 顶部栏 -->
+    <header class="topbar">
+        <div class="topbar-left">
+            <button class="menu-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">
+                <i class="fas fa-bars"></i>
+            </button>
+            <h1>概览</h1>
+            <span class="subtitle" id="pageSubtitle">今日数据 · 实时估算</span>
+        </div>
+        <div class="topbar-right">
+            <span class="date"><i class="far fa-calendar-alt"></i> 2025年7月14日</span>
+            <button class="btn btn-primary"><i class="fas fa-sync-alt"></i> 刷新数据</button>
+        </div>
+    </header>
+
+    <!-- ===== 页面：概览 ===== -->
+    <div class="page active" id="page-dashboard">
+        <div class="stats-row">
+            <div class="stat-card">
+                <i class="icon fas fa-wallet"></i>
+                <div class="label">总资产</div>
+                <div class="value">¥128,640</div>
+                <div class="change up">▲ 较昨日 +¥320.50</div>
+            </div>
+            <div class="stat-card">
+                <i class="icon fas fa-percentage"></i>
+                <div class="label">累计收益率</div>
+                <div class="value">+8.52%</div>
+                <div class="change up">▲ 跑赢沪深300 +3.21%</div>
+            </div>
+            <div class="stat-card">
+                <i class="icon fas fa-chart-bar"></i>
+                <div class="label">今日盈亏</div>
+                <div class="value" style="color:#2e7d32;">+¥320</div>
+                <div class="change up">▲ 昨日 -¥128</div>
+            </div>
+            <div class="stat-card">
+                <i class="icon fas fa-layer-group"></i>
+                <div class="label">持仓数量</div>
+                <div class="value">4</div>
+                <div class="change">偏股型 3 · 债券型 1</div>
+            </div>
+        </div>
+
+        <div class="charts-row">
+            <div class="chart-card">
+                <div class="card-title"><i class="fas fa-chart-pie"></i> 资产配置</div>
+                <div class="chart-wrapper"><canvas id="pieChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <div class="card-title"><i class="fas fa-chart-line"></i> 累计收益走势</div>
+                <div class="chart-wrapper"><canvas id="lineChart"></canvas></div>
+            </div>
+        </div>
+
+        <div class="table-card">
+            <div class="card-title"><i class="fas fa-list"></i> 持仓明细</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>基金名称</th>
+                        <th>持有份额</th>
+                        <th>成本净值</th>
+                        <th>当前净值</th>
+                        <th>持仓市值</th>
+                        <th>收益率</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><div class="fund-name">易方达蓝筹精选</div><span class="fund-code">005827</span></td>
+                        <td>5,000.00</td>
+                        <td>1.5200</td>
+                        <td class="text-up">1.6830</td>
+                        <td class="text-up">¥8,415</td>
+                        <td><span class="tag up">+10.72%</span></td>
+                        <td><button class="btn btn-outline btn-sm" onclick="openFundDetail(0)">详情</button></td>
+                    </tr>
+                    <tr>
+                        <td><div class="fund-name">中欧医疗健康C</div><span class="fund-code">003096</span></td>
+                        <td>3,200.00</td>
+                        <td>1.2300</td>
+                        <td class="text-down">1.1850</td>
+                        <td class="text-down">¥3,792</td>
+                        <td><span class="tag down">-3.66%</span></td>
+                        <td><button class="btn btn-outline btn-sm" onclick="openFundDetail(1)">详情</button></td>
+                    </tr>
+                    <tr>
+                        <td><div class="fund-name">富国天惠成长</div><span class="fund-code">161005</span></td>
+                        <td>2,800.00</td>
+                        <td>2.1000</td>
+                        <td class="text-up">2.3850</td>
+                        <td class="text-up">¥6,678</td>
+                        <td><span class="tag up">+13.57%</span></td>
+                        <td><button class="btn btn-outline btn-sm" onclick="openFundDetail(2)">详情</button></td>
+                    </tr>
+                    <tr>
+                        <td><div class="fund-name">招商中证白酒</div><span class="fund-code">161725</span></td>
+                        <td>10,000.00</td>
+                        <td>0.9500</td>
+                        <td class="text-up">0.9810</td>
+                        <td class="text-up">¥9,810</td>
+                        <td><span class="tag up">+3.26%</span></td>
+                        <td><button class="btn btn-outline btn-sm" onclick="openFundDetail(3)">详情</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ===== 页面：持仓 ===== -->
+    <div class="page" id="page-portfolio">
+        <div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
+            <div>
+                <h2 style="font-size:18px;font-weight:600;">全部持仓</h2>
+                <p style="font-size:13px;color:#8a847a;margin-top:4px;">共 4 只基金 · 总市值 ¥128,640</p>
+            </div>
+            <button class="btn btn-primary"><i class="fas fa-plus"></i> 添加持仓</button>
+        </div>
+        <div class="table-card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>基金代码</th>
+                        <th>基金名称</th>
+                        <th>类型</th>
+                        <th>持有份额</th>
+                        <th>成本净值</th>
+                        <th>当前净值</th>
+                        <th>持仓市值</th>
+                        <th>收益</th>
+                        <th>收益率</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>005827</td>
+                        <td><span class="fund-name">易方达蓝筹精选</span></td>
+                        <td>偏股混合</td>
+                        <td>5,000.00</td>
+                        <td>1.5200</td>
+                        <td class="text-up">1.6830</td>
+                        <td>¥8,415.00</td>
+                        <td class="text-up">+¥815.00</td>
+                        <td><span class="tag up">+10.72%</span></td>
+                        <td><button class="btn btn-outline btn-sm"><i class="fas fa-edit"></i></button></td>
+                    </tr>
+                    <tr>
+                        <td>003096</td>
+                        <td><span class="fund-name">中欧医疗健康C</span></td>
+                        <td>医药主题</td>
+                        <td>3,200.00</td>
+                        <td>1.2300</td>
+                        <td class="text-down">1.1850</td>
+                        <td>¥3,792.00</td>
+                        <td class="text-down">-¥144.00</td>
+                        <td><span class="tag down">-3.66%</span></td>
+                        <td><button class="btn btn-outline btn-sm"><i class="fas fa-edit"></i></button></td>
+                    </tr>
+                    <tr>
+                        <td>161005</td>
+                        <td><span class="fund-name">富国天惠成长</span></td>
+                        <td>偏股混合</td>
+                        <td>2,800.00</td>
+                        <td>2.1000</td>
+                        <td class="text-up">2.3850</td>
+                        <td>¥6,678.00</td>
+                        <td class="text-up">+¥798.00</td>
+                        <td><span class="tag up">+13.57%</span></td>
+                        <td><button class="btn btn-outline btn-sm"><i class="fas fa-edit"></i></button></td>
+                    </tr>
+                    <tr>
+                        <td>161725</td>
+                        <td><span class="fund-name">招商中证白酒</span></td>
+                        <td>指数型</td>
+                        <td>10,000.00</td>
+                        <td>0.9500</td>
+                        <td class="text-up">0.9810</td>
+                        <td>¥9,810.00</td>
+                        <td class="text-up">+¥310.00</td>
+                        <td><span class="tag up">+3.26%</span></td>
+                        <td><button class="btn btn-outline btn-sm"><i class="fas fa-edit"></i></button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div style="margin-top:16px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+            <div class="stat-card"><div class="label">总投资成本</div><div class="value">¥118,547</div></div>
+            <div class="stat-card"><div class="label">总盈利</div><div class="value" style="color:#2e7d32;">+¥10,093</div></div>
+            <div class="stat-card"><div class="label">持仓天数</div><div class="value">186 天</div></div>
+            <div class="stat-card"><div class="label">年化收益率</div><div class="value" style="color:#2e7d32;">+16.72%</div></div>
+        </div>
+    </div>
+
+    <!-- ===== 页面：分析 ===== -->
+    <div class="page" id="page-analysis">
+        <div style="margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+            <h2 style="font-size:18px;font-weight:600;">基金分析</h2>
+            <input type="text" placeholder="输基金代码/名称搜索…" style="padding:8px 14px;border:1px solid #d4cdc0;border-radius:6px;font-size:13px;flex:1;max-width:320px;background:#faf7f2;outline:none;" />
+            <button class="btn btn-primary"><i class="fas fa-search"></i> 查询</button>
+        </div>
+
+        <div class="detail-header">
+            <div>
+                <div class="name">易方达蓝筹精选 <span style="font-size:14px;font-weight:400;color:#8a847a;">005827</span></div>
+                <div style="font-size:13px;color:#8a847a;margin-top:4px;">基金经理: 张坤 · 偏股混合型 · 成立 7年</div>
+            </div>
+            <div style="text-align:right;">
+                <div class="price">1.6830</div>
+                <div class="price-change text-up">▲ +0.0210 (+1.26%)</div>
+            </div>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="m-label">近1月</div>
+                <div class="m-value text-up">+3.52%</div>
+            </div>
+            <div class="metric-card">
+                <div class="m-label">近3月</div>
+                <div class="m-value text-up">+8.17%</div>
+            </div>
+            <div class="metric-card">
+                <div class="m-label">近1年</div>
+                <div class="m-value text-up">+12.30%</div>
+            </div>
+            <div class="metric-card">
+                <div class="m-label">成立以来</div>
+                <div class="m-value" style="color:#c7883c;">+68.30%</div>
+            </div>
+            <div class="metric-card">
+                <div class="m-label">夏普比率</div>
+                <div class="m-value">1.52</div>
+                <div class="m-sub">优于同类</div>
+            </div>
+            <div class="metric-card">
+                <div class="m-label">最大回撤</div>
+                <div class="m-value" style="color:#c62828;">-18.42%</div>
+                <div class="m-sub">近1年</div>
+            </div>
+            <div class="metric-card">
+                <div class="m-label">波动率</div>
+                <div class="m-value">14.28%</div>
+                <div class="m-sub">年化</div>
+            </div>
+            <div class="metric-card">
+                <div class="m-label">同类排名</div>
+                <div class="m-value" style="color:#2e7d32;">前 25%</div>
+                <div class="m-sub">偏股混合型</div>
+            </div>
+        </div>
+
+        <div class="chart-card" style="background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.05);">
+            <div class="card-title"><i class="fas fa-chart-line"></i> 净值走势（近1年）</div>
+            <div class="chart-wrapper"><canvas id="detailChart"></canvas></div>
+        </div>
+    </div>
+
+    <!-- ===== 页面：预测 ===== -->
+    <div class="page" id="page-predict">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+            <div>
+                <h2 style="font-size:18px;font-weight:600;"><i class="fas fa-brain" style="color:#c7883c;"></i> 智能预测 · 多因子评分模型</h2>
+                <p style="font-size:13px;color:#8a847a;margin-top:4px;">基于 Fama-French 多因子模型改良，从收益、风险、性价比、基金经理、基金公司五个维度综合评分</p>
+            </div>
+            <button class="btn btn-primary" onclick="openEmailModal()">
+                <i class="fas fa-envelope"></i> 发送加仓报告
+            </button>
+        </div>
+
+        <!-- 模型说明横幅 -->
+        <div style="background:#fdf6ec;border:1px solid #f0dcc0;border-radius:10px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px;">
+            <i class="fas fa-lightbulb" style="color:#c7883c;font-size:24px;"></i>
+            <div style="font-size:13px;color:#5a544a;line-height:1.6;">
+                <strong>评分模型说明：</strong>
+                综合评分 = 收益能力(30%) + 风控能力(25%) + 性价比(20%) + 基金经理(15%) + 基金公司(10%)。
+                每个维度 0-100 分，总分 0-100。同时叠加技术指标（RSI / MACD / 均线）判断买卖时机。
+            </div>
+        </div>
+
+        <!-- 总体组合评分 -->
+        <div style="background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.05);margin-bottom:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <div>
+                    <span style="font-size:14px;font-weight:600;">组合综合评分</span>
+                    <span style="font-size:12px;color:#8a847a;margin-left:8px;">基于当前持仓计算</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:16px;">
+                    <div style="text-align:center;">
+                        <div style="font-size:28px;font-weight:700;color:#c7883c;">76</div>
+                        <div style="font-size:11px;color:#8a847a;">总分</div>
+                    </div>
+                    <div style="background:#e8e0d4;border-radius:8px;width:200px;height:12px;overflow:hidden;">
+                        <div style="width:76%;height:100%;background:#c7883c;border-radius:8px;"></div>
+                    </div>
+                    <span style="font-weight:600;color:#c7883c;">⭐⭐⭐⭐ 良好</span>
+                </div>
+            </div>
+            <div style="display:flex;justify-content:space-around;align-items:flex-end;padding:0 4px;height:130px;">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;">
+                    <div style="font-size:15px;font-weight:700;color:#c62828;">82</div>
+                    <div style="width:32px;height:80px;background:#e8e0d4;border-radius:4px;position:relative;overflow:hidden;">
+                        <div style="position:absolute;bottom:0;width:100%;height:82%;background:#c62828;border-radius:4px;"></div>
+                    </div>
+                    <div style="font-size:11px;color:#8a847a;">收益</div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;">
+                    <div style="font-size:15px;font-weight:700;color:#c7883c;">65</div>
+                    <div style="width:32px;height:80px;background:#e8e0d4;border-radius:4px;position:relative;overflow:hidden;">
+                        <div style="position:absolute;bottom:0;width:100%;height:65%;background:#c7883c;border-radius:4px;"></div>
+                    </div>
+                    <div style="font-size:11px;color:#8a847a;">风控</div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;">
+                    <div style="font-size:15px;font-weight:700;color:#2e7d32;">71</div>
+                    <div style="width:32px;height:80px;background:#e8e0d4;border-radius:4px;position:relative;overflow:hidden;">
+                        <div style="position:absolute;bottom:0;width:100%;height:71%;background:#2e7d32;border-radius:4px;"></div>
+                    </div>
+                    <div style="font-size:11px;color:#8a847a;">性价比</div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;">
+                    <div style="font-size:15px;font-weight:700;color:#c7883c;">88</div>
+                    <div style="width:32px;height:80px;background:#e8e0d4;border-radius:4px;position:relative;overflow:hidden;">
+                        <div style="position:absolute;bottom:0;width:100%;height:88%;background:#c7883c;border-radius:4px;"></div>
+                    </div>
+                    <div style="font-size:11px;color:#8a847a;">经理</div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;">
+                    <div style="font-size:15px;font-weight:700;color:#c7883c;">78</div>
+                    <div style="width:32px;height:80px;background:#e8e0d4;border-radius:4px;position:relative;overflow:hidden;">
+                        <div style="position:absolute;bottom:0;width:100%;height:78%;background:#c7883c;border-radius:4px;"></div>
+                    </div>
+                    <div style="font-size:11px;color:#8a847a;">公司</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 单只基金预测卡片 -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+            <!-- 易方达蓝筹 -->
+            <div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.05);overflow:hidden;">
+                <div style="padding:16px 20px;border-bottom:1px solid #f0ebe2;display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <span style="font-weight:600;font-size:14px;">易方达蓝筹精选</span>
+                        <span style="font-size:12px;color:#8a847a;margin-left:6px;">005827</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="text-align:right;">
+                            <div style="font-size:22px;font-weight:700;color:#c7883c;">83</div>
+                            <div style="font-size:11px;color:#8a847a;">综合评分</div>
+                        </div>
+                        <div style="background:#ffebee;color:#c62828;padding:4px 12px;border-radius:6px;font-size:13px;font-weight:600;">
+                            <i class="fas fa-arrow-up"></i> 买入
+                        </div>
+                    </div>
+                </div>
+                <div style="padding:16px 20px;">
+                    <div style="display:flex;justify-content:space-around;align-items:flex-end;padding:0 2px;height:110px;">
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#c62828;">86</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:86%;background:#c62828;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">收益</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#c7883c;">70</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:70%;background:#c7883c;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">风控</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#c7883c;">78</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:78%;background:#c7883c;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">性价比</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#c7883c;">92</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:92%;background:#c7883c;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">经理</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0ebe2;">
+                        <div style="font-size:12px;color:#8a847a;margin-bottom:8px;">技术信号</div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <span style="background:#ffebee;color:#c62828;padding:2px 10px;border-radius:4px;font-size:12px;">RSI 58 中性</span>
+                            <span style="background:#ffebee;color:#c62828;padding:2px 10px;border-radius:4px;font-size:12px;">MACD 金叉 ↑</span>
+                            <span style="background:#e8f5e9;color:#2e7d32;padding:2px 10px;border-radius:4px;font-size:12px;">均线 多头排列 ↑</span>
+                            <span style="background:#ffebee;color:#c62828;padding:2px 10px;border-radius:4px;font-size:12px;">布林带 中轨上方</span>
+                        </div>
+                    </div>
+                    <div style="margin-top:10px;padding:10px;background:#fdf6ec;border-radius:6px;font-size:12px;color:#5a544a;line-height:1.5;">
+                        <i class="fas fa-comment" style="color:#c7883c;"></i>
+                        张坤任职 8 年，风格稳定，长期业绩优异。当前净值处于布林中轨上方，MACD 金叉，短期动量向上。建议 <strong style="color:#c62828;">逢低分批买入</strong>。
+                    </div>
+                </div>
+            </div>
+
+            <!-- 中欧医疗 -->
+            <div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.05);overflow:hidden;">
+                <div style="padding:16px 20px;border-bottom:1px solid #f0ebe2;display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <span style="font-weight:600;font-size:14px;">中欧医疗健康C</span>
+                        <span style="font-size:12px;color:#8a847a;margin-left:6px;">003096</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="text-align:right;">
+                            <div style="font-size:22px;font-weight:700;color:#c7883c;">56</div>
+                            <div style="font-size:11px;color:#8a847a;">综合评分</div>
+                        </div>
+                        <div style="background:#e8f5e9;color:#2e7d32;padding:4px 12px;border-radius:6px;font-size:13px;font-weight:600;">
+                            <i class="fas fa-minus"></i> 持有
+                        </div>
+                    </div>
+                </div>
+                <div style="padding:16px 20px;">
+                    <div style="display:flex;justify-content:space-around;align-items:flex-end;padding:0 2px;height:110px;">
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#2e7d32;">45</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:45%;background:#2e7d32;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">收益</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#2e7d32;">38</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:38%;background:#2e7d32;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">风控</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#c7883c;">52</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:52%;background:#c7883c;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">性价比</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#c7883c;">75</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:75%;background:#c7883c;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">经理</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0ebe2;">
+                        <div style="font-size:12px;color:#8a847a;margin-bottom:8px;">技术信号</div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <span style="background:#e8f5e9;color:#2e7d32;padding:2px 10px;border-radius:4px;font-size:12px;">RSI 32 超卖</span>
+                            <span style="background:#ffebee;color:#c62828;padding:2px 10px;border-radius:4px;font-size:12px;">MACD 死叉 ↓</span>
+                            <span style="background:#e8f5e9;color:#2e7d32;padding:2px 10px;border-radius:4px;font-size:12px;">均线 空头排列 ↓</span>
+                            <span style="background:#ffebee;color:#c62828;padding:2px 10px;border-radius:4px;font-size:12px;">布林带 下轨支撑</span>
+                        </div>
+                    </div>
+                    <div style="margin-top:10px;padding:10px;background:#fdf6ec;border-radius:6px;font-size:12px;color:#5a544a;line-height:1.5;">
+                        <i class="fas fa-comment" style="color:#c7883c;"></i>
+                        医药板块持续回调，葛兰持仓集中度高。RSI 接近超卖区，布林带触及下轨，技术面有反弹需求。建议 <strong style="color:#2e7d32;">持有观望</strong>，等企稳信号。
+                    </div>
+                </div>
+            </div>
+
+            <!-- 富国天惠 -->
+            <div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.05);overflow:hidden;">
+                <div style="padding:16px 20px;border-bottom:1px solid #f0ebe2;display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <span style="font-weight:600;font-size:14px;">富国天惠成长</span>
+                        <span style="font-size:12px;color:#8a847a;margin-left:6px;">161005</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="text-align:right;">
+                            <div style="font-size:22px;font-weight:700;color:#c7883c;">79</div>
+                            <div style="font-size:11px;color:#8a847a;">综合评分</div>
+                        </div>
+                        <div style="background:#ffebee;color:#c62828;padding:4px 12px;border-radius:6px;font-size:13px;font-weight:600;">
+                            <i class="fas fa-arrow-up"></i> 买入
+                        </div>
+                    </div>
+                </div>
+                <div style="padding:16px 20px;">
+                    <div style="display:flex;justify-content:space-around;align-items:flex-end;padding:0 2px;height:110px;">
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#c62828;">80</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:80%;background:#c62828;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">收益</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#c7883c;">68</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:68%;background:#c7883c;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">风控</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#c7883c;">75</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:75%;background:#c7883c;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">性价比</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#c7883c;">90</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:90%;background:#c7883c;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">经理</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0ebe2;">
+                        <div style="font-size:12px;color:#8a847a;margin-bottom:8px;">技术信号</div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <span style="background:#ffebee;color:#c62828;padding:2px 10px;border-radius:4px;font-size:12px;">RSI 62 偏强</span>
+                            <span style="background:#ffebee;color:#c62828;padding:2px 10px;border-radius:4px;font-size:12px;">MACD 金叉 ↑</span>
+                            <span style="background:#ffebee;color:#c62828;padding:2px 10px;border-radius:4px;font-size:12px;">均线 多头排列 ↑</span>
+                            <span style="background:#ffebee;color:#c62828;padding:2px 10px;border-radius:4px;font-size:12px;">布林带 中轨上方</span>
+                        </div>
+                    </div>
+                    <div style="margin-top:10px;padding:10px;background:#fdf6ec;border-radius:6px;font-size:12px;color:#5a544a;line-height:1.5;">
+                        <i class="fas fa-comment" style="color:#c7883c;"></i>
+                        朱少醒任职 18 年，唯一一只管理超 15 年的基金经理。长期业绩稳健，风格不漂移。当前各项技术指标偏多，建议 <strong style="color:#c62828;">逢低加仓</strong>。
+                    </div>
+                </div>
+            </div>
+
+            <!-- 招商中证白酒 -->
+            <div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.05);overflow:hidden;">
+                <div style="padding:16px 20px;border-bottom:1px solid #f0ebe2;display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <span style="font-weight:600;font-size:14px;">招商中证白酒</span>
+                        <span style="font-size:12px;color:#8a847a;margin-left:6px;">161725</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="text-align:right;">
+                            <div style="font-size:22px;font-weight:700;color:#c7883c;">62</div>
+                            <div style="font-size:11px;color:#8a847a;">综合评分</div>
+                        </div>
+                        <div style="background:#fff7e6;color:#b8860b;padding:4px 12px;border-radius:6px;font-size:13px;font-weight:600;">
+                            <i class="fas fa-search"></i> 观望
+                        </div>
+                    </div>
+                </div>
+                <div style="padding:16px 20px;">
+                    <div style="display:flex;justify-content:space-around;align-items:flex-end;padding:0 2px;height:110px;">
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#c7883c;">58</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:58%;background:#c7883c;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">收益</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#c7883c;">55</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:55%;background:#c7883c;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">风控</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#c7883c;">65</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:65%;background:#c7883c;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">性价比</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">
+                            <div style="font-size:14px;font-weight:700;color:#c7883c;">70</div>
+                            <div style="width:28px;height:70px;background:#e8e0d4;border-radius:3px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;bottom:0;width:100%;height:70%;background:#c7883c;border-radius:3px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:#8a847a;">经理</div>
+                        </div>
+                    </div>
+                    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0ebe2;">
+                        <div style="font-size:12px;color:#8a847a;margin-bottom:8px;">技术信号</div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <span style="background:#ffebee;color:#c62828;padding:2px 10px;border-radius:4px;font-size:12px;">RSI 45 中性</span>
+                            <span style="background:#e8f5e9;color:#2e7d32;padding:2px 10px;border-radius:4px;font-size:12px;">MACD 粘合 —</span>
+                            <span style="background:#e8f5e9;color:#2e7d32;padding:2px 10px;border-radius:4px;font-size:12px;">均线 缠绕 —</span>
+                            <span style="background:#ffebee;color:#c62828;padding:2px 10px;border-radius:4px;font-size:12px;">布林带 中轨附近</span>
+                        </div>
+                    </div>
+                    <div style="margin-top:10px;padding:10px;background:#fdf6ec;border-radius:6px;font-size:12px;color:#5a544a;line-height:1.5;">
+                        <i class="fas fa-comment" style="color:#c7883c;"></i>
+                        白酒板块近期横盘整理，缺乏明确方向。指数型基金跟随行业走势，当前估值处于中等水平。建议 <strong style="color:#b8860b;">观望为主</strong>，等待趋势明朗。
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 评分等级说明 -->
+        <div style="background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.05);">
+            <div style="font-size:13px;font-weight:600;margin-bottom:12px;">评分等级对照</div>
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;text-align:center;font-size:12px;">
+                <div>
+                    <div style="background:#c62828;color:#fff;padding:4px;border-radius:4px;font-weight:600;">90-100</div>
+                    <div style="color:#c62828;margin-top:4px;">⭐⭐⭐⭐⭐ 优质</div>
+                    <div style="color:#2e7d32;font-weight:500;">强烈推荐买入</div>
+                </div>
+                <div>
+                    <div style="background:#c7883c;color:#fff;padding:4px;border-radius:4px;font-weight:600;">70-89</div>
+                    <div style="color:#c7883c;margin-top:4px;">⭐⭐⭐⭐ 良好</div>
+                    <div style="color:#c62828;font-weight:500;">推荐买入</div>
+                </div>
+                <div>
+                    <div style="background:#b8860b;color:#fff;padding:4px;border-radius:4px;font-weight:600;">50-69</div>
+                    <div style="color:#b8860b;margin-top:4px;">⭐⭐⭐ 一般</div>
+                    <div style="color:#b8860b;font-weight:500;">观望 / 定投</div>
+                </div>
+                <div>
+                    <div style="background:#2e7d32;color:#fff;padding:4px;border-radius:4px;font-weight:600;">30-49</div>
+                    <div style="color:#2e7d32;margin-top:4px;">⭐⭐ 较差</div>
+                    <div style="color:#2e7d32;font-weight:500;">建议减仓</div>
+                </div>
+                <div>
+                    <div style="background:#555;color:#fff;padding:4px;border-radius:4px;font-weight:600;">0-29</div>
+                    <div style="color:#555;margin-top:4px;">⭐ 差质</div>
+                    <div style="color:#555;font-weight:500;">建议卖出</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 页面：工具（定投计算器） ===== -->
+    <div class="page" id="page-tools">
+        <h2 style="font-size:18px;font-weight:600;margin-bottom:16px;"><i class="fas fa-calculator" style="color:#c7883c;"></i> 定投计算器</h2>
+        <div class="calc-grid">
+            <div class="calc-card">
+                <div class="form-group">
+                    <label>每月定投金额（元）</label>
+                    <input type="number" id="monthlyAmount" value="1000" />
+                </div>
+                <div class="form-group">
+                    <label>定投年限</label>
+                    <input type="number" id="investYears" value="5" />
+                </div>
+                <div class="form-group">
+                    <label>预期年化收益率（%）</label>
+                    <input type="number" id="expectedReturn" value="8" step="0.5" />
+                </div>
+                <button class="btn btn-primary" onclick="calcDCA()"><i class="fas fa-calculator"></i> 计算</button>
+            </div>
+            <div class="calc-result-card" id="dcaResult">
+                <div class="big-num" id="totalAmount">¥73,666</div>
+                <div class="big-num-label">预计最终总资产</div>
+                <div class="detail-line">投入本金 <strong>¥60,000</strong> · 收益 <strong style="color:#2e7d32;">¥13,666</strong></div>
+                <div class="detail-line" style="font-size:12px;color:#8a847a;">每月投 ¥1,000 · 投 5年 · 年化 8%</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 页面：设置 ===== -->
+    <div class="page" id="page-settings">
+        <h2 style="font-size:18px;font-weight:600;margin-bottom:16px;"><i class="fas fa-cog" style="color:#c7883c;"></i> 设置</h2>
+        <div class="settings-card">
+            <div class="setting-item">
+                <div>
+                    <div class="s-label">自动刷新净值</div>
+                    <div class="s-desc">每个交易日收盘后自动拉取最新净值</div>
+                </div>
+                <div class="toggle on"></div>
+            </div>
+            <div class="setting-item">
+                <div>
+                    <div class="s-label">收益推送通知</div>
+                    <div class="s-desc">当日收益超过阈值时推送提醒</div>
+                </div>
+                <div class="toggle" id="notifToggle"></div>
+            </div>
+            <div class="setting-item">
+                <div>
+                    <div class="s-label">显示沪深300基准</div>
+                    <div class="s-desc">在收益曲线中叠加沪深300对比线</div>
+                </div>
+                <div class="toggle on"></div>
+            </div>
+            <div class="setting-item">
+                <div>
+                    <div class="s-label">数据缓存天数</div>
+                    <div class="s-desc">本地缓存基金历史数据的天数</div>
+                </div>
+                <div>
+                    <input type="number" value="30" style="width:70px;padding:6px 10px;border:1px solid #d4cdc0;border-radius:6px;text-align:center;background:#faf7f2;" />
+                </div>
+            </div>
+        </div>
+
+        <!-- 邮箱配置弹窗 (由收益推送通知触发) -->
+        <div class="modal-overlay" id="emailConfigModal">
+            <div class="modal-box" style="width:480px;">
+                <div class="modal-header">
+                    <div>
+                        <div class="modal-title"><i class="fas fa-envelope"></i> 配置邮箱通知</div>
+                        <div style="font-size:12px;color:#8a847a;margin-top:2px;">配置后即可接收加仓建议报告</div>
+                    </div>
+                    <button class="modal-close" onclick="closeEmailConfig()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>接收邮箱</label>
+                        <input type="email" id="cfgEmailTo" value="" placeholder="your@email.com" />
+                    </div>
+                    <div class="form-group">
+                        <label>SMTP 服务器</label>
+                        <input type="text" id="cfgSmtpServer" value="smtp.qq.com" placeholder="smtp.qq.com" />
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div class="form-group">
+                            <label>SMTP 端口</label>
+                            <input type="number" id="cfgSmtpPort" value="465" />
+                        </div>
+                        <div class="form-group">
+                            <label>发件邮箱</label>
+                            <input type="email" id="cfgEmailFrom" value="" placeholder="sender@qq.com" />
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>授权码</label>
+                        <input type="password" id="cfgSmtpPass" value="" placeholder="QQ邮箱需开启SMTP后获取专用授权码" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" onclick="testEmailConfig()"><i class="fas fa-paper-plane"></i> 测试连接</button>
+                    <button class="btn btn-primary" onclick="saveEmailConfig()"><i class="fas fa-check"></i> 保存配置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ===== 邮件预览弹窗 ===== -->
+<div class="modal-overlay" id="emailModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title"><i class="fas fa-envelope"></i> 加仓建议报告预览</div>
+                <div style="font-size:12px;color:#8a847a;margin-top:2px;">以下内容将发送至 <span id="emailPreviewTo" style="color:#c7883c;">your@email.com</span></div>
+            </div>
+            <button class="modal-close" onclick="closeEmailModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div style="background:#faf7f2;border-radius:8px;padding:20px;font-size:13px;line-height:1.6;">
+                <div style="text-align:center;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #e8e0d4;">
+                    <div style="font-size:16px;font-weight:700;color:#1a1816;">📊 基金驾驶舱 · 加仓建议报告</div>
+                    <div style="color:#8a847a;font-size:12px;">2025年7月14日 · 基于多因子评分模型</div>
+                </div>
+                <div style="margin-bottom:16px;">
+                    <div style="font-weight:600;margin-bottom:8px;">建议加仓基金</div>
+                    <div style="background:#fff;border-radius:6px;padding:12px;margin-bottom:10px;border-left:3px solid #c62828;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <div><strong>易方达蓝筹精选</strong> <span style="color:#8a847a;">005827</span></div>
+                            <span style="background:#ffebee;color:#c62828;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;">买入</span>
+                        </div>
+                        <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;">
+                            <span>综合评分: <strong>83</strong> / 100</span>
+                            <span>收益: 86 | 风控: 70 | 性价比: 78 | 经理: 92</span>
+                            <span>RSI: 58 (中性)</span>
+                            <span>MACD: 金叉 ↑</span>
+                        </div>
+                        <div style="font-size:12px;color:#5a544a;margin-top:6px;padding-top:6px;border-top:1px solid #f0ebe2;">
+                            💬 张坤任职8年，风格稳定。MACD金叉短期动量向上，建议逢低分批买入。
+                        </div>
+                    </div>
+                    <div style="background:#fff;border-radius:6px;padding:12px;margin-bottom:10px;border-left:3px solid #c62828;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <div><strong>富国天惠成长</strong> <span style="color:#8a847a;">161005</span></div>
+                            <span style="background:#ffebee;color:#c62828;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;">买入</span>
+                        </div>
+                        <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;">
+                            <span>综合评分: <strong>79</strong> / 100</span>
+                            <span>收益: 80 | 风控: 68 | 性价比: 75 | 经理: 90</span>
+                            <span>RSI: 62 (偏强)</span>
+                            <span>MACD: 金叉 ↑</span>
+                        </div>
+                        <div style="font-size:12px;color:#5a544a;margin-top:6px;padding-top:6px;border-top:1px solid #f0ebe2;">
+                            💬 朱少醒任职18年，长期业绩稳健。各项技术指标偏多，建议逢低加仓。
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-bottom:16px;">
+                    <div style="font-weight:600;margin-bottom:8px;">持有观望基金</div>
+                    <div style="background:#fff;border-radius:6px;padding:12px;margin-bottom:10px;border-left:3px solid #2e7d32;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <div><strong>中欧医疗健康C</strong> <span style="color:#8a847a;">003096</span></div>
+                            <span style="background:#e8f5e9;color:#2e7d32;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;">持有</span>
+                        </div>
+                        <div style="font-size:12px;color:#5a544a;margin-top:6px;">综合评分56 · RSI 32超卖 · 布林带下轨 · 建议持有观望等企稳</div>
+                    </div>
+                    <div style="background:#fff;border-radius:6px;padding:12px;margin-bottom:10px;border-left:3px solid #b8860b;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <div><strong>招商中证白酒</strong> <span style="color:#8a847a;">161725</span></div>
+                            <span style="background:#fff7e6;color:#b8860b;padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;">观望</span>
+                        </div>
+                        <div style="font-size:12px;color:#5a544a;margin-top:6px;">综合评分62 · 横盘整理 · 趋势不明 · 建议等待趋势明朗</div>
+                    </div>
+                </div>
+                <div style="background:#fff;border-radius:6px;padding:12px;display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <div style="font-size:12px;color:#8a847a;">组合综合评分</div>
+                        <div style="font-size:20px;font-weight:700;color:#c7883c;">76 / 100 ⭐⭐⭐⭐</div>
+                    </div>
+                    <div style="text-align:right;font-size:12px;color:#8a847a;">
+                        <div>数据来源: akshare</div>
+                        <div>模型: 多因子评分 + 技术信号</div>
+                    </div>
+                </div>
+                <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid #e8e0d4;font-size:11px;color:#8a847a;">
+                    本报告由「基金驾驶舱」自动生成 · 仅供参考，不构成投资建议
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeEmailModal()">取消</button>
+            <button class="btn btn-primary" onclick="sendEmail()"><i class="fas fa-paper-plane"></i> 确认发送</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 基金详情弹窗 ===== -->
+<div class="modal-overlay" id="fundDetailModal">
+    <div class="modal-box" style="width:640px;">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title" id="fdName">基金名称</div>
+                <div style="font-size:12px;color:#8a847a;margin-top:2px;">
+                    <span id="fdCode"></span>
+                    <span style="margin:0 6px;">·</span>
+                    <span id="fdType"></span>
+                    <span style="margin:0 6px;">·</span>
+                    基金经理 <span id="fdManager" style="color:#c7883c;"></span>
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeFundDetail()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <!-- 净值区 -->
+            <div style="background:#faf7f2;border-radius:8px;padding:16px;margin-bottom:16px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <div style="font-size:28px;font-weight:700;color:#1a1816;" id="fdNav"></div>
+                        <div style="font-size:14px;font-weight:500;margin-top:2px;" id="fdChange"></div>
+                    </div>
+                    <div style="display:flex;gap:16px;text-align:center;">
+                        <div><div style="font-size:13px;color:#8a847a;">近1月</div><div style="font-size:15px;font-weight:600;" id="fdR1m"></div></div>
+                        <div><div style="font-size:13px;color:#8a847a;">近3月</div><div style="font-size:15px;font-weight:600;" id="fdR3m"></div></div>
+                        <div><div style="font-size:13px;color:#8a847a;">近6月</div><div style="font-size:15px;font-weight:600;" id="fdR6m"></div></div>
+                        <div><div style="font-size:13px;color:#8a847a;">近1年</div><div style="font-size:15px;font-weight:600;" id="fdR1y"></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 关键指标 -->
+            <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:#1a1816;">关键指标</div>
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px;">
+                <div class="metric-card" style="padding:12px;">
+                    <div class="m-label">夏普比率</div>
+                    <div class="m-value" style="font-size:17px;" id="fdSharpe"></div>
+                    <div class="m-sub" id="fdSharpeNote"></div>
+                </div>
+                <div class="metric-card" style="padding:12px;">
+                    <div class="m-label">最大回撤</div>
+                    <div class="m-value" style="font-size:17px;" id="fdDrawdown"></div>
+                    <div class="m-sub">近1年</div>
+                </div>
+                <div class="metric-card" style="padding:12px;">
+                    <div class="m-label">年化波动率</div>
+                    <div class="m-value" style="font-size:17px;" id="fdVolatility"></div>
+                </div>
+                <div class="metric-card" style="padding:12px;">
+                    <div class="m-label">Alpha</div>
+                    <div class="m-value" style="font-size:17px;" id="fdAlpha"></div>
+                </div>
+                <div class="metric-card" style="padding:12px;">
+                    <div class="m-label">Beta</div>
+                    <div class="m-value" style="font-size:17px;" id="fdBeta"></div>
+                </div>
+            </div>
+
+            <!-- 前10大持仓 -->
+            <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:#1a1816;">前10大持仓</div>
+            <div style="background:#faf7f2;border-radius:8px;padding:12px 16px;margin-bottom:16px;" id="fdHoldings"></div>
+
+            <!-- 基金经理 -->
+            <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:#1a1816;">基金经理</div>
+            <div style="background:#fff;border:1px solid #e8e0d4;border-radius:8px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:14px;">
+                <div style="width:44px;height:44px;border-radius:50%;background:#c7883c;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:700;flex-shrink:0;">
+                    <span id="fdManagerAvatar">张</span>
+                </div>
+                <div style="flex:1;">
+                    <div style="font-weight:600;font-size:14px;" id="fdManagerName"></div>
+                    <div style="font-size:12px;color:#8a847a;margin-top:2px;" id="fdManagerBio"></div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:13px;font-weight:600;" id="fdManagerReturn"></div>
+                    <div style="font-size:11px;color:#8a847a;">任职回报</div>
+                </div>
+            </div>
+
+            <!-- 智能评分 -->
+            <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:#1a1816;">智能预测评分</div>
+            <div style="background:#fdf6ec;border:1px solid #f0dcc0;border-radius:8px;padding:14px 16px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div style="text-align:center;">
+                            <div style="font-size:24px;font-weight:700;color:#c7883c;" id="fdScore"></div>
+                            <div style="font-size:10px;color:#8a847a;">综合评分</div>
+                        </div>
+                        <div>
+                            <span style="font-weight:600;" id="fdScoreLabel"></span>
+                            <div style="font-size:12px;color:#8a847a;margin-top:2px;" id="fdAdvice"></div>
+                        </div>
+                    </div>
+                    <div style="padding:6px 16px;border-radius:6px;font-size:14px;font-weight:600;" id="fdAction">买入</div>
+                </div>
+                <div style="display:flex;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid #f0dcc0;">
+                    <div style="flex:1;display:flex;gap:8px;flex-wrap:wrap;" id="fdSignals"></div>
+                </div>
+                <div style="font-size:12px;color:#5a544a;margin-top:10px;padding-top:10px;border-top:1px solid #f0dcc0;" id="fdComment"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Toast 消息 ===== -->
+<div class="toast" id="toast"></div>
+
+<script>
+    // ====== 基金详情数据 ======
+    const fundData = [
+        {
+            name: '易方达蓝筹精选', code: '005827', type: '偏股混合型',
+            manager: '张坤', managerAvatar: '张',
+            managerBio: '从业 8 年 · 管理规模 960 亿 · 金牛奖得主',
+            managerReturn: '+168.30%',
+            nav: '1.6830', change: '+0.0210 (+1.26%)',
+            r1m: '<span class="text-up">+3.52%</span>',
+            r3m: '<span class="text-up">+8.17%</span>',
+            r6m: '<span class="text-up">+6.84%</span>',
+            r1y: '<span class="text-up">+12.30%</span>',
+            sharpe: '1.52', sharpeNote: '优于同类',
+            drawdown: '-18.42%', volatility: '14.28%',
+            alpha: '5.20%', beta: '0.89',
+            holdings: [
+                {name:'贵州茅台', pct:'9.82%'},{name:'腾讯控股', pct:'8.51%'},
+                {name:'五粮液', pct:'7.23%'},{name:'泸州老窖', pct:'6.15%'},
+                {name:'洋河股份', pct:'5.47%'},{name:'香港交易所', pct:'4.82%'},
+                {name:'美团-W', pct:'4.31%'},{name:'招商银行', pct:'3.98%'},
+                {name:'伊利股份', pct:'3.52%'},{name:'中国平安', pct:'3.18%'}
+            ],
+            score: 83, scoreLabel: '⭐⭐⭐⭐ 良好',
+            advice: '建议逢低分批买入', action: '买入',
+            actionBg: '#ffebee', actionColor: '#c62828',
+            signals: [
+                {label:'RSI 58 中性', type:'up'},{label:'MACD 金叉 ↑', type:'up'},
+                {label:'均线 多头排列 ↑', type:'up'},{label:'布林带 中轨上方', type:'up'}
+            ],
+            comment: '张坤任职8年，风格稳定，长期业绩优异。当前净值处于布林中轨上方，MACD金叉，短期动量向上。建议逢低分批买入。'
+        },
+        {
+            name: '中欧医疗健康C', code: '003096', type: '医药主题型',
+            manager: '葛兰', managerAvatar: '葛',
+            managerBio: '从业 7 年 · 管理规模 680 亿 · 医学博士',
+            managerReturn: '+92.50%',
+            nav: '1.1850', change: '-0.0150 (-1.25%)',
+            r1m: '<span class="text-down">-2.18%</span>',
+            r3m: '<span class="text-down">-5.33%</span>',
+            r6m: '<span class="text-down">-8.61%</span>',
+            r1y: '<span class="text-down">-12.45%</span>',
+            sharpe: '0.68', sharpeNote: '低于同类',
+            drawdown: '-28.36%', volatility: '18.92%',
+            alpha: '-2.15%', beta: '1.12',
+            holdings: [
+                {name:'爱尔眼科', pct:'9.56%'},{name:'药明康德', pct:'8.83%'},
+                {name:'恒瑞医药', pct:'7.91%'},{name:'迈瑞医疗', pct:'6.74%'},
+                {name:'片仔癀', pct:'5.82%'},{name:'康龙化成', pct:'4.95%'},
+                {name:'泰格医药', pct:'4.52%'},{name:'通策医疗', pct:'4.18%'},
+                {name:'凯莱英', pct:'3.76%'},{name:'博腾股份', pct:'3.25%'}
+            ],
+            score: 56, scoreLabel: '⭐⭐⭐ 一般',
+            advice: '建议持有观望，等企稳信号', action: '持有',
+            actionBg: '#e8f5e9', actionColor: '#2e7d32',
+            signals: [
+                {label:'RSI 32 超卖', type:'down'},{label:'MACD 死叉 ↓', type:'down'},
+                {label:'均线 空头排列 ↓', type:'down'},{label:'布林带 下轨支撑', type:'up'}
+            ],
+            comment: '医药板块持续回调，葛兰持仓集中度高。RSI接近超卖区，布林带触及下轨，技术面有反弹需求。建议持有观望，等企稳信号。'
+        },
+        {
+            name: '富国天惠成长', code: '161005', type: '偏股混合型',
+            manager: '朱少醒', managerAvatar: '朱',
+            managerBio: '从业 18 年 · 管理规模 410 亿 · 唯一管理单只基金超15年',
+            managerReturn: '+1,382.45%',
+            nav: '2.3850', change: '+0.0180 (+0.76%)',
+            r1m: '<span class="text-up">+2.84%</span>',
+            r3m: '<span class="text-up">+7.52%</span>',
+            r6m: '<span class="text-up">+5.96%</span>',
+            r1y: '<span class="text-up">+11.28%</span>',
+            sharpe: '1.38', sharpeNote: '优于同类',
+            drawdown: '-21.15%', volatility: '15.63%',
+            alpha: '4.85%', beta: '0.95',
+            holdings: [
+                {name:'贵州茅台', pct:'8.45%'},{name:'招商银行', pct:'6.82%'},
+                {name:'五粮液', pct:'5.93%'},{name:'伊利股份', pct:'5.27%'},
+                {name:'宁波银行', pct:'4.86%'},{name:'国电南瑞', pct:'4.35%'},
+                {name:'华鲁恒升', pct:'3.88%'},{name:'宝信软件', pct:'3.52%'},
+                {name:'万科A', pct:'3.16%'},{name:'兴业银行', pct:'2.95%'}
+            ],
+            score: 79, scoreLabel: '⭐⭐⭐⭐ 良好',
+            advice: '建议逢低加仓', action: '买入',
+            actionBg: '#ffebee', actionColor: '#c62828',
+            signals: [
+                {label:'RSI 62 偏强', type:'up'},{label:'MACD 金叉 ↑', type:'up'},
+                {label:'均线 多头排列 ↑', type:'up'},{label:'布林带 中轨上方', type:'up'}
+            ],
+            comment: '朱少醒任职18年，唯一一位管理单只基金超过15年的基金经理。长期业绩稳健，风格不漂移。当前各项技术指标偏多，建议逢低加仓。'
+        },
+        {
+            name: '招商中证白酒', code: '161725', type: '指数型',
+            manager: '侯昊', managerAvatar: '侯',
+            managerBio: '从业 6 年 · 管理规模 820 亿 · 专注指数基金',
+            managerReturn: '+56.80%',
+            nav: '0.9810', change: '+0.0080 (+0.82%)',
+            r1m: '<span class="text-up">+1.25%</span>',
+            r3m: '<span class="text-up">+3.68%</span>',
+            r6m: '<span class="text-down">-2.14%</span>',
+            r1y: '<span class="text-down">-8.52%</span>',
+            sharpe: '0.95', sharpeNote: '同类平均',
+            drawdown: '-25.80%', volatility: '22.15%',
+            alpha: '-0.50%', beta: '1.05',
+            holdings: [
+                {name:'贵州茅台', pct:'15.52%'},{name:'五粮液', pct:'13.85%'},
+                {name:'泸州老窖', pct:'11.23%'},{name:'山西汾酒', pct:'9.86%'},
+                {name:'洋河股份', pct:'7.54%'},{name:'古井贡酒', pct:'5.82%'},
+                {name:'今世缘', pct:'4.35%'},{name:'水井坊', pct:'3.68%'},
+                {name:'迎驾贡酒', pct:'3.15%'},{name:'舍得酒业', pct:'2.82%'}
+            ],
+            score: 62, scoreLabel: '⭐⭐⭐ 一般',
+            advice: '建议观望为主，等待趋势明朗', action: '观望',
+            actionBg: '#fff7e6', actionColor: '#b8860b',
+            signals: [
+                {label:'RSI 45 中性', type:'neutral'},{label:'MACD 粘合 —', type:'neutral'},
+                {label:'均线 缠绕 —', type:'neutral'},{label:'布林带 中轨附近', type:'up'}
+            ],
+            comment: '白酒板块近期横盘整理，缺乏明确方向。指数型基金跟随行业走势，当前估值处于中等水平。建议观望为主，等待趋势明朗。'
+        }
+    ];
+
+    function openFundDetail(idx) {
+        const f = fundData[idx];
+        document.getElementById('fdName').textContent = f.name;
+        document.getElementById('fdCode').textContent = f.code;
+        document.getElementById('fdType').textContent = f.type;
+        document.getElementById('fdManager').textContent = f.manager;
+        document.getElementById('fdNav').textContent = f.nav;
+        document.getElementById('fdChange').innerHTML = f.change;
+        document.getElementById('fdR1m').innerHTML = f.r1m;
+        document.getElementById('fdR3m').innerHTML = f.r3m;
+        document.getElementById('fdR6m').innerHTML = f.r6m;
+        document.getElementById('fdR1y').innerHTML = f.r1y;
+        document.getElementById('fdSharpe').textContent = f.sharpe;
+        document.getElementById('fdSharpeNote').textContent = f.sharpeNote;
+        document.getElementById('fdDrawdown').textContent = f.drawdown;
+        document.getElementById('fdVolatility').textContent = f.volatility;
+        document.getElementById('fdAlpha').textContent = f.alpha;
+        document.getElementById('fdBeta').textContent = f.beta;
+        document.getElementById('fdManagerAvatar').textContent = f.managerAvatar;
+        document.getElementById('fdManagerName').textContent = f.manager;
+        document.getElementById('fdManagerBio').textContent = f.managerBio;
+        document.getElementById('fdManagerReturn').textContent = f.managerReturn;
+        let h = '';
+        f.holdings.forEach(item => {
+            const p = parseFloat(item.pct);
+            h += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;">' +
+                '<span style="width:80px;font-size:12px;color:#1a1816;">' + item.name + '</span>' +
+                '<span style="width:40px;font-size:12px;font-weight:600;">' + item.pct + '</span>' +
+                '<div style="flex:1;background:#e8e0d4;border-radius:3px;height:8px;overflow:hidden;">' +
+                '<div style="width:' + p + '%;height:100%;background:#c7883c;border-radius:3px;"></div></div></div>';
+        });
+        document.getElementById('fdHoldings').innerHTML = h;
+        document.getElementById('fdScore').textContent = f.score;
+        document.getElementById('fdScoreLabel').textContent = f.scoreLabel;
+        document.getElementById('fdAdvice').textContent = f.advice;
+        const actionEl = document.getElementById('fdAction');
+        actionEl.textContent = f.action;
+        actionEl.style.background = f.actionBg;
+        actionEl.style.color = f.actionColor;
+        let sg = '';
+        f.signals.forEach(s => {
+            let bg = '#ffebee', color = '#c62828';
+            if (s.type === 'down') { bg = '#e8f5e9'; color = '#2e7d32'; }
+            if (s.type === 'neutral') { bg = '#f0ebe2'; color = '#8a847a'; }
+            sg += '<span style="background:' + bg + ';color:' + color + ';padding:2px 10px;border-radius:4px;font-size:12px;">' + s.label + '</span>';
+        });
+        document.getElementById('fdSignals').innerHTML = sg;
+        document.getElementById('fdComment').innerHTML = '<i class="fas fa-comment" style="color:#c7883c;"></i> ' + f.comment;
+        document.getElementById('fundDetailModal').classList.add('show');
+    }
+
+    function closeFundDetail() {
+        document.getElementById('fundDetailModal').classList.remove('show');
+    }
+
+    // ====== 邮箱配置 ======
+    let emailConfigured = false;
+
+    function openEmailConfig() {
+        document.getElementById('emailConfigModal').classList.add('show');
+    }
+    function closeEmailConfig() {
+        document.getElementById('emailConfigModal').classList.remove('show');
+    }
+    function saveEmailConfig() {
+        const email = document.getElementById('cfgEmailTo').value;
+        const server = document.getElementById('cfgSmtpServer').value;
+        if (!email || !server) {
+            showToast('⚠️ 请至少填写接收邮箱和SMTP服务器');
+            return;
+        }
+        emailConfigured = true;
+        closeEmailConfig();
+        document.getElementById('notifToggle').classList.add('on');
+        showToast('✅ 邮箱配置已保存，通知已开启');
+    }
+    function testEmailConfig() {
+        const email = document.getElementById('cfgEmailTo').value;
+        if (!email) { showToast('⚠️ 请先填写接收邮箱'); return; }
+        showToast('📧 测试邮件已发送至 ' + email + '（后续接入真实SMTP）');
+    }
+
+    // ====== 邮件功能 ======
+    function openEmailModal() {
+        const email = document.getElementById('cfgEmailTo').value || '未设置';
+        document.getElementById('emailPreviewTo').textContent = email;
+        document.getElementById('emailModal').classList.add('show');
+    }
+    function closeEmailModal() {
+        document.getElementById('emailModal').classList.remove('show');
+    }
+    function sendEmail() {
+        const email = document.getElementById('cfgEmailTo').value;
+        if (!email) { showToast('⚠️ 请先开启「收益推送通知」配置邮箱'); return; }
+        closeEmailModal();
+        showToast('✅ 加仓报告已发送至 ' + email + '（后续接入真实 SMTP）');
+    }
+    function showToast(msg) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    // ====== 弹窗外部点击关闭 ======
+    document.getElementById('emailModal').addEventListener('click', function(e) {
+        if (e.target === this) closeEmailModal();
+    });
+    document.getElementById('fundDetailModal').addEventListener('click', function(e) {
+        if (e.target === this) closeFundDetail();
+    });
+    document.getElementById('emailConfigModal').addEventListener('click', function(e) {
+        if (e.target === this) closeEmailConfig();
+    });
+
+    // ====== 页面切换 ======
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', function() {
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            this.classList.add('active');
+            const page = this.dataset.page;
+            document.getElementById('page-' + page).classList.add('active');
+            document.querySelector('.topbar-left h1').textContent = this.textContent.trim();
+            // 更新副标题
+            const subtitles = {
+                dashboard: '今日数据 · 实时估算',
+                portfolio: '全部持仓一览',
+                analysis: '基金深度分析',
+                tools: '投资工具',
+                predict: '多因子评分模型 · 买卖时机参考',
+                settings: '系统设置'
+            };
+            document.getElementById('pageSubtitle').textContent = subtitles[page] || '';
+            // 移动端关侧边栏
+            if (window.innerWidth <= 640) {
+                document.getElementById('sidebar').classList.remove('open');
+            }
+            // 页面切换时重新渲染图表
+            setTimeout(() => { renderCharts(); }, 100);
+        });
+    });
+
+    // ====== 图表 ======
+    let chartInstances = {};
+
+    function renderCharts() {
+        // 只在对应页面可见时渲染
+        renderPieChart();
+        renderLineChart();
+        renderDetailChart();
+    }
+
+    function renderPieChart() {
+        const canvas = document.getElementById('pieChart');
+        if (!canvas || !canvas.offsetParent) return;
+        if (chartInstances.pie) { chartInstances.pie.destroy(); }
+        const ctx = canvas.getContext('2d');
+        chartInstances.pie = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['易方达蓝筹精选', '中欧医疗健康C', '富国天惠成长', '招商中证白酒'],
+                datasets: [{
+                    data: [8415, 3792, 6678, 9810],
+                    backgroundColor: ['#c7883c', '#e8a84c', '#f0c878', '#d4943a'],
+                    borderWidth: 0,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: '#5a544a', padding: 12, font: { size: 12 } } }
+                },
+                cutout: '60%'
+            }
+        });
+    }
+
+    function renderLineChart() {
+        const canvas = document.getElementById('lineChart');
+        if (!canvas || !canvas.offsetParent) return;
+        if (chartInstances.line) { chartInstances.line.destroy(); }
+        const ctx = canvas.getContext('2d');
+        const months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+        const portfolio = [118000, 119200, 121500, 120800, 123400, 125100, 126800, 127500, 128100, 128640];
+        const hs300 = [100, 99.5, 101.2, 100.8, 102.5, 103.1, 102.8, 103.5, 104.0, 103.8];
+
+        chartInstances.line = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: months.slice(0, portfolio.length),
+                datasets: [
+                    {
+                        label: '我的组合',
+                        data: portfolio,
+                        borderColor: '#c7883c',
+                        backgroundColor: 'rgba(199,136,60,0.08)',
+                        fill: true,
+                        tension: .3,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#c7883c',
+                        borderWidth: 2,
+                    },
+                    {
+                        label: '沪深300',
+                        data: hs300,
+                        borderColor: '#8a847a',
+                        borderDash: [4,4],
+                        pointRadius: 0,
+                        borderWidth: 1.5,
+                        fill: false,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                plugins: {
+                    legend: { position: 'top', labels: { color: '#5a544a', boxWidth: 14, padding: 12, font: { size: 12 } } }
+                },
+                scales: {
+                    y: { grid: { color: '#f0ebe2' }, ticks: { color: '#8a847a', font: { size: 11 } } },
+                    x: { grid: { display: false }, ticks: { color: '#8a847a', font: { size: 11 } } }
+                }
+            }
+        });
+    }
+
+    function renderDetailChart() {
+        const canvas = document.getElementById('detailChart');
+        if (!canvas || !canvas.offsetParent) return;
+        if (chartInstances.detail) { chartInstances.detail.destroy(); }
+        const ctx = canvas.getContext('2d');
+        const months = ['7月','8月','9月','10月','11月','12月','1月','2月','3月','4月','5月','6月'];
+        const nav = [1.52, 1.48, 1.45, 1.50, 1.53, 1.56, 1.54, 1.58, 1.62, 1.64, 1.66, 1.68];
+
+        chartInstances.detail = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: months,
+                datasets: [{
+                    label: '单位净值',
+                    data: nav,
+                    borderColor: '#c7883c',
+                    backgroundColor: 'rgba(199,136,60,0.06)',
+                    fill: true,
+                    tension: .3,
+                    pointRadius: 2,
+                    pointBackgroundColor: '#c7883c',
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { grid: { color: '#f0ebe2' }, ticks: { color: '#8a847a', font: { size: 11 } } },
+                    x: { grid: { display: false }, ticks: { color: '#8a847a', font: { size: 11 } } }
+                }
+            }
+        });
+    }
+
+    // ====== 定投计算器 ======
+    function calcDCA() {
+        const monthly = parseFloat(document.getElementById('monthlyAmount').value) || 0;
+        const years = parseFloat(document.getElementById('investYears').value) || 0;
+        const rate = parseFloat(document.getElementById('expectedReturn').value) || 0;
+        const months = years * 12;
+        const monthlyRate = rate / 100 / 12;
+
+        // 定投终值公式: FV = P * [((1+r)^n - 1) / r] * (1+r)  (期初投)
+        let total = 0;
+        if (monthlyRate > 0) {
+            total = monthly * ((Math.pow(1 + monthlyRate, months) - 1) / monthlyRate) * (1 + monthlyRate);
+        } else {
+            total = monthly * months;
+        }
+        const principal = monthly * months;
+        const profit = total - principal;
+
+        document.getElementById('totalAmount').textContent = '¥' + Math.round(total).toLocaleString();
+        document.getElementById('dcaResult').querySelector('.detail-line').innerHTML =
+            '投入本金 <strong>¥' + Math.round(principal).toLocaleString() + '</strong> · 收益 <strong style="color:#2e7d32;">¥' + Math.round(profit).toLocaleString() + '</strong>';
+        document.getElementById('dcaResult').querySelector('.detail-line:last-child').textContent =
+            '每月投 ¥' + monthly.toLocaleString() + ' · 投 ' + years + '年 · 年化 ' + rate + '%';
+    }
+
+    // ====== Toggle 开关 ======
+    document.querySelectorAll('.toggle').forEach(t => {
+        if (t.id === 'notifToggle') {
+            t.addEventListener('click', function() {
+                if (emailConfigured) {
+                    this.classList.toggle('on');
+                } else {
+                    openEmailConfig();
+                }
+            });
+        } else {
+            t.addEventListener('click', function() { this.classList.toggle('on'); });
+        }
+    });
+
+    // ====== 初始化 ======
+    renderCharts();
+    calcDCA();
+</script>
+
+</body>
+</html>
