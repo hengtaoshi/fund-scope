@@ -8,6 +8,14 @@ WORKDIR /app
 
 # akshare / numpy / pandas 均有 pre-built wheels，无需 gcc
 
+# 安装 git + docker CLI（用于 Webhook 自动部署）
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git curl && \
+    curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.3.1.tgz | \
+    tar xz -C /usr/local/bin --strip-components=1 docker/docker && \
+    apt-get remove -y curl && apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
 # 安装 Python 依赖
 COPY backend/requirements.txt ./backend/
 # 使用清华 PyPI 镜像加速国内下载

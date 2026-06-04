@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import re
 import shutil
+import subprocess
 from functools import wraps
 from fund_data import get_fund_nav, get_fund_info, get_fund_manager, search_fund
 from database import init_db, add_holding, get_all_holdings, get_holding, update_holding, delete_holding, get_user_by_email, create_user
@@ -513,6 +514,60 @@ def serve_css(filename):
 @app.route("/webfonts/<path:filename>")
 def serve_webfonts(filename):
     return send_from_directory(os.path.join(FRONTEND_DIR, "webfonts"), filename)
+
+
+# ====== Gitee Webhook 自动部署 ======
+
+
+@app.route("/api/deploy", methods=["POST"])
+def deploy_webhook():
+    """接收 Gitee Webhook，自动 git pull + docker compose up -d --build"""
+    expected = os.environ.get("WEBHOOK_SECRET", "")
+    actual = request.headers.get("X-Gitee-Token", "")
+    if not expected or not actual or actual != expected:
+        return jsonify({"error": "未授权"}), 403
+
+    body = request.get_json(silent=True) or {}
+    ref = body.get("ref", "")
+    if ref != "refs/heads/master":
+        return jsonify({"message": f"跳过非 master 分支"})
+
+    # 使用宿主机路径（容器内挂载了相同路径，docker compose 需要宿主机路径）
+    project_dir = os.environ.get("PROJECT_DIR", os.path.dirname(BASE_DIR))
+
+    try:
+        result_fetch = subprocess.run(
+            ["git", "-C", project_dir, "fetch", "origin", "master"],
+            capture_output=True, text=True, timeout=60
+        )
+        if result_fetch.returncode != 0:
+            return jsonify({"error": "git fetch 失败", "detail": result_fetch.stderr.strip()}), 500
+
+        result_reset = subprocess.run(
+            ["git", "-C", project_dir, "reset", "--hard", "origin/master"],
+            capture_output=True, text=True, timeout=30
+        )
+        if result_reset.returncode != 0:
+            return jsonify({"error": "git reset 失败", "detail": result_reset.stderr.strip()}), 500
+
+        result_build = subprocess.run(
+            ["docker", "compose", "-f", os.path.join(project_dir, "docker-compose.yml"),
+             "up", "-d", "--build", "--remove-orphans"],
+            capture_output=True, text=True, timeout=300
+        )
+        if result_build.returncode != 0:
+            return jsonify({"error": "docker compose 失败", "detail": result_build.stderr.strip()}), 500
+
+        return jsonify({
+            "success": True,
+            "commit": body.get("head_commit", {}).get("message", ""),
+            "author": body.get("head_commit", {}).get("author", {}).get("name", ""),
+        })
+
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "部署超时"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
