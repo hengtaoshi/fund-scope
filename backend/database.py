@@ -41,6 +41,15 @@ def init_db():
     cols = [row["name"] for row in cursor.fetchall()]
     if "user_id" not in cols:
         conn.execute("ALTER TABLE holdings ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+    # 定投累计投入金额字段
+    if "total_invested" not in cols:
+        conn.execute("ALTER TABLE holdings ADD COLUMN total_invested REAL DEFAULT NULL")
+    if "dca_start_date" not in cols:
+        conn.execute("ALTER TABLE holdings ADD COLUMN dca_start_date TEXT DEFAULT NULL")
+    if "dca_amount" not in cols:
+        conn.execute("ALTER TABLE holdings ADD COLUMN dca_amount REAL DEFAULT NULL")
+    if "dca_frequency" not in cols:
+        conn.execute("ALTER TABLE holdings ADD COLUMN dca_frequency TEXT DEFAULT NULL")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_holdings_user_id ON holdings(user_id)")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -63,12 +72,12 @@ def init_db():
     conn.close()
 
 
-def add_holding(user_id: int, code: str, name: str, shares: float, cost_nav: float, notes: str = "") -> int:
+def add_holding(user_id: int, code: str, name: str, shares: float, cost_nav: float, notes: str = "", total_invested: float = None, dca_start_date: str = None, dca_amount: float = None, dca_frequency: str = None) -> int:
     """添加持仓，返回 id"""
     conn = _get_conn()
     cursor = conn.execute(
-        "INSERT INTO holdings (user_id, code, name, shares, cost_nav, added_at, notes) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (user_id, code, name, shares, cost_nav, datetime.now().isoformat(), notes),
+        "INSERT INTO holdings (user_id, code, name, shares, cost_nav, added_at, notes, total_invested, dca_start_date, dca_amount, dca_frequency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (user_id, code, name, shares, cost_nav, datetime.now().isoformat(), notes, total_invested, dca_start_date, dca_amount, dca_frequency),
     )
     conn.commit()
     holding_id = cursor.lastrowid
@@ -96,7 +105,7 @@ def get_holding(holding_id: int, user_id: int) -> dict | None:
     return dict(row) if row else None
 
 
-def update_holding(holding_id: int, user_id: int, shares: float | None = None, cost_nav: float | None = None, notes: str | None = None) -> bool:
+def update_holding(holding_id: int, user_id: int, shares: float | None = None, cost_nav: float | None = None, notes: str | None = None, total_invested: float | None = None, dca_start_date: str | None = None, dca_amount: float | None = None, dca_frequency: str | None = None) -> bool:
     """更新持仓（校验所属用户），返回是否更新成功"""
     conn = _get_conn()
     fields = []
@@ -110,6 +119,18 @@ def update_holding(holding_id: int, user_id: int, shares: float | None = None, c
     if notes is not None:
         fields.append("notes = ?")
         values.append(notes)
+    if total_invested is not None:
+        fields.append("total_invested = ?")
+        values.append(total_invested)
+    if dca_start_date is not None:
+        fields.append("dca_start_date = ?")
+        values.append(dca_start_date)
+    if dca_amount is not None:
+        fields.append("dca_amount = ?")
+        values.append(dca_amount)
+    if dca_frequency is not None:
+        fields.append("dca_frequency = ?")
+        values.append(dca_frequency)
     if not fields:
         conn.close()
         return False

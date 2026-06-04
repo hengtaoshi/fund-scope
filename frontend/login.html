@@ -277,7 +277,20 @@ async function doRegister(e) {
                 window.location.href = '/';
             }
         } catch(e) {}
+        return;
     }
+    // dev mode auto login
+    try {
+        const devResp = await fetch('/api/auth/dev-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const devData = await devResp.json();
+        if (devData && devData.token) {
+            localStorage.setItem('fund_token', devData.token);
+            window.location.href = '/';
+        }
+    } catch (e) {}
 })();
 </script>
 </body>

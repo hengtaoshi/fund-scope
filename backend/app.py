@@ -16,6 +16,10 @@ from database import init_db, add_holding, get_all_holdings, get_holding, update
 from fund_analysis import calc_indicators, calc_signals, calc_score
 from email_sender import send_report, test_connection as test_smtp
 from config import CACHE_DIR
+# 默认 JWT_SECRET（生产环境应用环境变量覆盖）
+if not os.environ.get("JWT_SECRET"):
+    os.environ["JWT_SECRET"] = "fund-dashboard-jwt-secret-key-2025"
+
 from auth import (
     sign_jwt, verify_jwt, verify_password, hash_password,
     send_verification_code, check_verification_code, check_rate_limit,
@@ -27,6 +31,17 @@ FRONTEND_DIR = os.path.join(os.path.dirname(BASE_DIR), "frontend")
 # 启动时初始化数据库
 init_db()
 
+# 本地开发模式：自动创建测试用户
+if os.environ.get("SKIP_AUTH", "").lower() in ("1", "true"):
+    test_email = "test@dev.local"
+    test_password = "test123456"
+    existing = get_user_by_email(test_email)
+    if not existing:
+        create_user(test_email, hash_password(test_password))
+        print(f"[DEV] 已创建测试用户: {test_email} / {test_password}")
+    else:
+        print(f"[DEV] 测试用户已存在: {test_email}")
+
 app = Flask(__name__)
 
 # ====== JWT 中间件 ======
@@ -36,6 +51,9 @@ def login_required(f):
     """JWT 登录校验装饰器"""
     @wraps(f)
     def decorated(*args, **kwargs):
+        if os.environ.get("SKIP_AUTH", "").lower() in ("1", "true"):
+            request.current_user = {"user_id": 1, "email": "dev@localhost"}
+            return f(*args, **kwargs)
         auth = request.headers.get("Authorization", "")
         if not auth.startswith("Bearer "):
             return jsonify({"error": "未登录"}), 401
@@ -139,6 +157,19 @@ def api_login():
 
     token = sign_jwt(user["id"], email)
     return jsonify({"success": True, "token": token, "email": email})
+
+
+@app.route("/api/auth/dev-login", methods=["POST"])
+def api_dev_login():
+    """开发模式自动登录（仅 SKIP_AUTH=1 时可用）"""
+    if os.environ.get("SKIP_AUTH", "").lower() not in ("1", "true"):
+        return jsonify({"error": "仅开发模式可用"}), 403
+    user = get_user_by_email("test@dev.local")
+    if not user:
+        create_user("test@dev.local", hash_password("test123456"))
+        user = get_user_by_email("test@dev.local")
+    token = sign_jwt(user["id"], "test@dev.local")
+    return jsonify({"success": True, "token": token, "email": "test@dev.local"})
 
 
 @app.route("/api/auth/me")
@@ -320,6 +351,10 @@ def portfolio_list():
             "return_pct": round((current_total - cost_total) / cost_total * 100, 2) if cost_total > 0 else 0,
             "added_at": h["added_at"],
             "notes": h["notes"],
+            "total_invested": h.get("total_invested"),
+            "dca_start_date": h.get("dca_start_date"),
+            "dca_amount": h.get("dca_amount"),
+            "dca_frequency": h.get("dca_frequency"),
         })
     return jsonify({"holdings": results})
 
@@ -345,7 +380,11 @@ def portfolio_add():
     info = get_fund_info(code)
     name = info.get("fund_name", code) if info else code
 
-    holding_id = add_holding(request.current_user['user_id'], code, name, shares, cost_nav, notes)
+    total_invested = data.get("total_invested")
+    dca_start_date = data.get("dca_start_date")
+    dca_amount = data.get("dca_amount")
+    dca_frequency = data.get("dca_frequency")
+    holding_id = add_holding(request.current_user['user_id'], code, name, shares, cost_nav, notes, total_invested, dca_start_date, dca_amount, dca_frequency)
     return jsonify({"id": holding_id, "name": name}), 201
 
 
@@ -367,7 +406,11 @@ def portfolio_update(holding_id: int):
     if cost_nav is not None and cost_nav <= 0:
         return jsonify({"error": "成本净值必须大于 0"}), 400
 
-    ok = update_holding(holding_id, request.current_user['user_id'], shares, cost_nav, notes)
+    total_invested = data.get("total_invested")
+    dca_start_date = data.get("dca_start_date")
+    dca_amount = data.get("dca_amount")
+    dca_frequency = data.get("dca_frequency")
+    ok = update_holding(holding_id, request.current_user['user_id'], shares, cost_nav, notes, total_invested, dca_start_date, dca_amount, dca_frequency)
     return jsonify({"updated": ok}), 200 if ok else 304
 
 

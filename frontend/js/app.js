@@ -291,8 +291,12 @@ async function renderDashboard(el) {
         </div>
         <div class="card"><div class="card-title"><i class="fas fa-list"></i> 持仓明细</div>
         <table>
-            <thead><tr><th>基金名称</th><th>可用份额</th><th>成本单价</th><th>最新净值</th><th>持仓市值</th><th>收益</th><th>收益率</th><th></th></tr></thead>
-            <tbody>${h.map(x => `<tr><td><strong>${x.name}</strong></td><td>${fmt(x.shares)}</td><td>${x.cost_nav.toFixed(4)}</td><td class="${cls(x.profit)}">${x.current_nav.toFixed(4)}</td><td class="${cls(x.profit)}">${fmtMoney(x.current_total)}</td><td class="${cls(x.profit)}">${fmtMoney(x.profit)}</td><td><span class="${tagCls(x.profit)}">${fmtPct(x.return_pct)}</span></td><td><button class="btn btn-outline btn-sm" onclick="goAnalysis('${x.code}')">详情</button></td></tr>`).join('')}</tbody>
+            <thead><tr><th>基金名称</th><th>可用份额</th><th>平均成本</th><th>累计投入</th><th>最新净值</th><th>持仓市值</th><th>收益</th><th>收益率</th><th></th></tr></thead>
+            <tbody>${h.map(x => {
+                const invested = x.total_invested != null ? x.total_invested : x.cost_total;
+                const isDca = x.total_invested != null;
+                return `<tr><td><strong>${x.name}</strong>${isDca ? '<br><span style="font-size:10px;color:#b5aea0;">定投从' + (x.dca_start_date ? x.dca_start_date.slice(0,10) : '') + '</span>' : ''}</td><td>${fmt(x.shares)}</td><td>${x.cost_nav.toFixed(4)}</td><td>${fmtMoney(invested)}</td><td class="${cls(x.profit)}">${x.current_nav.toFixed(4)}</td><td class="${cls(x.profit)}">${fmtMoney(x.current_total)}</td><td class="${cls(x.profit)}">${fmtMoney(x.profit)}</td><td><span class="${tagCls(x.profit)}">${fmtPct(x.return_pct)}</span></td><td><button class="btn btn-outline btn-sm" onclick="goAnalysis('${x.code}')">详情</button></td></tr>`;
+            }).join('')}</tbody>
         </table></div>`;
 
     setTimeout(() => {
@@ -395,14 +399,59 @@ async function renderPortfolio(el) {
     const data = await api('/api/portfolio');
     const h = data && data.holdings ? data.holdings : [];
 
+    // 对定投基金获取开始日净值对比
+    const dcaInfo = {};
+    for (const x of h) {
+        if (x.total_invested && x.dca_start_date) {
+            const navData = await api(`/api/fund/${x.code}/nav`);
+            if (navData && navData.data) {
+                const startIdx = navData.data.findIndex(d => d.日期 >= x.dca_start_date);
+                const start = startIdx >= 0 ? navData.data[startIdx] : null;
+                const row = navData.data[navData.data.length - 1];
+                // 计算理论期数和理论投入
+                let periods = 0;
+                if (x.dca_amount && x.dca_frequency) {
+                    const totalDays = navData.data.length - startIdx;
+                    if (x.dca_frequency === 'daily') {
+                        periods = totalDays; // 交易日数
+                    } else if (x.dca_frequency === 'weekly') {
+                        periods = Math.ceil(totalDays / 5);
+                    } else if (x.dca_frequency === 'monthly') {
+                        // 从开始月到当前月
+                        const s = new Date(x.dca_start_date);
+                        const e = new Date(navData.data[navData.data.length - 1].日期);
+                        periods = (e.getFullYear() - s.getFullYear()) * 12 + e.getMonth() - s.getMonth() + 1;
+                    }
+                }
+                dcaInfo[x.id] = {
+                    startNav: start ? start.单位净值 : null,
+                    currentNav: row ? row.单位净值 : null,
+                    expectedPeriods: periods,
+                    expectedInvested: periods * (x.dca_amount || 0),
+                };
+            }
+        }
+    }
+
     el.innerHTML = `
         <div style="margin-bottom:16px"><button class="btn btn-primary" onclick="showAddHolding()"><i class="fas fa-plus"></i> 添加持仓</button></div>
         ${h.length === 0 ? '<div class="empty"><i class="fas fa-box-open"></i><p>暂无持仓，点击上方按钮添加</p></div>' : `
         <div class="card"><table>
-            <thead><tr><th>代码</th><th>名称</th><th>可用份额</th><th>成本单价</th><th>最新净值</th><th>市值</th><th>收益</th><th>收益率</th><th></th></tr></thead>
-            <tbody>${h.map(x => `<tr>
-                <td>${x.code}</td><td><strong>${x.name}</strong></td>
-                <td>${fmt(x.shares)}</td><td>${x.cost_nav.toFixed(4)}</td>
+            <thead><tr><th>代码</th><th>名称</th><th>可用份额</th><th>平均成本</th><th>累计投入</th><th>最新净值</th><th>市值</th><th>收益</th><th>收益率</th><th></th></tr></thead>
+            <tbody>${h.map(x => {
+                const isDca = x.total_invested != null;
+                const invested = isDca ? x.total_invested : x.cost_total;
+                return `<tr>
+                <td>${x.code}</td><td><strong>${x.name}</strong>${isDca ? ' <span class="tag-neutral" style="font-size:10px;">定投</span>' : ''}<br>
+                ${isDca && x.dca_start_date ? `<span style="font-size:11px;color:#b5aea0;">从 ${x.dca_start_date.slice(0,10)} 开始</span>` : ''}
+                ${isDca && x.dca_amount ? `<br><span style="font-size:11px;color:#b5aea0;">${x.dca_amount}元/${x.dca_frequency === 'daily' ? '天' : x.dca_frequency === 'weekly' ? '周' : '月'}</span>` : ''}
+                ${isDca && dcaInfo[x.id] && dcaInfo[x.id].startNav ? `<br><span style="font-size:11px;color:#5a544a;">净值 ${dcaInfo[x.id].startNav.toFixed(4)} → ${dcaInfo[x.id].currentNav.toFixed(4)} <span class="${cls(dcaInfo[x.id].currentNav - dcaInfo[x.id].startNav)}">${((dcaInfo[x.id].currentNav / dcaInfo[x.id].startNav - 1) * 100).toFixed(1)}%</span></span>` : ''}
+                ${isDca && dcaInfo[x.id] && dcaInfo[x.id].expectedPeriods > 0 ? `<br><span style="font-size:11px;color:#b5aea0;">应投 ${dcaInfo[x.id].expectedPeriods} 期 · 应投入 ${fmtMoney(dcaInfo[x.id].expectedInvested)}</span>` : ''}
+                ${isDca && dcaInfo[x.id] && dcaInfo[x.id].expectedInvested > 0 && x.total_invested ? `<br><span style="font-size:11px;color:#5a544a;">实际投入 ${fmtMoney(x.total_invested)} · ${cls(x.total_invested - dcaInfo[x.id].expectedInvested)}差额 ${fmtMoney(x.total_invested - dcaInfo[x.id].expectedInvested)}</span>` : ''}
+                </td>
+                <td>${fmt(x.shares)}</td>
+                <td>${x.cost_nav.toFixed(4)}</td>
+                <td>${fmtMoney(invested)}</td>
                 <td class="${cls(x.profit)}">${x.current_nav.toFixed(4)}</td>
                 <td class="${cls(x.profit)}">${fmtMoney(x.current_total)}</td>
                 <td class="${cls(x.profit)}">${fmtMoney(x.profit)}</td>
@@ -411,7 +460,8 @@ async function renderPortfolio(el) {
                     <button class="btn btn-outline btn-sm" onclick="showEditHolding(${x.id})" style="margin-right:4px"><i class="fas fa-edit"></i></button>
                     <button class="btn btn-outline btn-sm" onclick="deleteHolding(${x.id})"><i class="fas fa-trash"></i></button>
                 </td>
-            </tr>`).join('')}</tbody>
+            </tr>`;
+            }).join('')}</tbody>
         </table></div>
         <div class="stats">
             <div class="card stat-card"><div class="stat-label">总投资成本</div><div class="stat-value" style="font-size:20px;">${fmtMoney(h.reduce((s,x)=>s+x.cost_total,0))}</div></div>
@@ -429,14 +479,55 @@ function showAddHolding() {
         <div class="modal-header"><div class="modal-title"><i class="fas fa-plus"></i> 添加持仓</div><button class="modal-close" onclick="closeModal('addModal')">&times;</button></div>
         <div class="modal-body">
             <div class="form-group"><label>基金代码</label><input id="addCode" placeholder="如 005827" /></div>
+            <div class="form-group">
+                <label style="display:flex;gap:12px;align-items:center;">
+                    <span>买入方式</span>
+                    <span onclick="toggleDcaMode()" style="cursor:pointer;padding:2px 12px;border-radius:4px;font-size:12px;background:#f0ebe2;color:#5a544a;" id="dcaToggle">📅 定投模式</span>
+                </label>
+            </div>
             <div class="form-row">
-                <div class="form-group"><label>可用份额</label><input id="addShares" type="number" step="0.01" min="0.01" /></div>
-                <div class="form-group"><label>成本单价</label><input id="addCost" type="number" step="0.0001" min="0.001" placeholder="你买入时的净值" /></div>
+                <div class="form-group" id="addSharesGroup"><label>可用份额</label><input id="addShares" type="number" step="0.01" min="0.01" /></div>
+                <div class="form-group" id="addCostGroup"><label>成本单价</label><input id="addCost" type="number" step="0.0001" min="0.001" placeholder="买入时的净值" /></div>
+            </div>
+            <div class="form-group" id="addDcaGroup" style="display:none;">
+                <div class="form-row">
+                    <div class="form-group"><label>每期金额（元）</label><input id="addDcaAmt" type="number" step="1" min="1" placeholder="如 20" /></div>
+                    <div class="form-group"><label>定投频率</label><select id="addDcaFreq"><option value="daily">每天</option><option value="weekly" selected>每周</option><option value="monthly">每月</option></select></div>
+                </div>
+                <label>定投开始日期</label><input id="addDcaDate" type="date" />
+                <div style="margin-top:8px;padding:10px;background:#fdf6ec;border-radius:6px;font-size:12px;color:#5a544a;">系统将根据定投计划自动计算投入金额和份额，无需手动填写。</div>
             </div>
         </div>
         <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal('addModal')">取消</button><button class="btn btn-primary" onclick="submitHolding()">确认添加</button></div>
     </div>`;
     document.body.appendChild(modal);
+    window._dcaMode = false;
+}
+
+function toggleDcaMode() {
+    window._dcaMode = !window._dcaMode;
+    const toggle = $('dcaToggle');
+    const sharesGroup = $('addSharesGroup');
+    const costGroup = $('addCostGroup');
+    const dcaGroup = $('addDcaGroup');
+    const costInput = $('addCost');
+    if (window._dcaMode) {
+        toggle.textContent = '💰 普通买入';
+        toggle.style.background = '#c7883c';
+        toggle.style.color = '#fff';
+        sharesGroup.style.display = 'none';
+        costGroup.style.display = 'none';
+        dcaGroup.style.display = 'block';
+        costInput.required = false;
+    } else {
+        toggle.textContent = '📅 定投模式';
+        toggle.style.background = '#f0ebe2';
+        toggle.style.color = '#5a544a';
+        sharesGroup.style.display = 'block';
+        costGroup.style.display = 'block';
+        dcaGroup.style.display = 'none';
+        costInput.required = true;
+    }
 }
 
 function closeModal(id) {
@@ -445,10 +536,40 @@ function closeModal(id) {
 
 async function submitHolding() {
     const code = $('addCode').value.trim();
-    const shares = parseFloat($('addShares').value);
-    const cost = parseFloat($('addCost').value);
-    if (!code || !shares || !cost) { showToast('请填写完整信息'); return; }
-    const res = await api('/api/portfolio', { method: 'POST', body: JSON.stringify({ code, shares, cost_nav: cost }) });
+    let shares, cost, totalInvested = null, dcaStart = null, dcaAmt = null, dcaFreq = null;
+    if (window._dcaMode) {
+        dcaStart = $('addDcaDate').value || null;
+        dcaAmt = parseFloat($('addDcaAmt').value) || null;
+        dcaFreq = $('addDcaFreq').value || null;
+        if (!dcaStart || !dcaAmt || !dcaFreq) { showToast('请填写完整的定投计划'); return; }
+        showToast('⏳ 正在计算定投数据...');
+        const navData = await api(`/api/fund/${code}/nav`);
+        if (!navData || !navData.data) { showToast('获取净值失败'); return; }
+        const startIdx = navData.data.findIndex(d => d.日期 >= dcaStart);
+        if (startIdx < 0) { showToast('开始日期早于基金成立日'); return; }
+        const navs = navData.data.slice(startIdx);
+        let buyNavs = [];
+        if (dcaFreq === 'daily') buyNavs = navs;
+        else if (dcaFreq === 'weekly') buyNavs = navs.filter((_, i) => i % 5 === 0);
+        else if (dcaFreq === 'monthly') {
+            const seen = new Set();
+            buyNavs = navs.filter(d => { const m = d.日期.slice(0,7); if (seen.has(m)) return false; seen.add(m); return true; });
+        }
+        totalInvested = buyNavs.length * dcaAmt;
+        let totalShares = 0;
+        buyNavs.forEach(d => { totalShares += dcaAmt / d.单位净值; });
+        shares = Math.round(totalShares * 100) / 100;
+        cost = totalInvested / shares;
+        showToast('✅ 定投计算完成');
+    } else {
+        shares = parseFloat($('addShares').value);
+        if (!code || !shares) { showToast('请填写完整信息'); return; }
+        cost = parseFloat($('addCost').value);
+        if (!cost) { showToast('请填写成本单价'); return; }
+    }
+    const body = { code, shares, cost_nav: cost };
+    if (totalInvested) { body.total_invested = totalInvested; body.dca_start_date = dcaStart; body.dca_amount = dcaAmt; body.dca_frequency = dcaFreq; }
+    const res = await api('/api/portfolio', { method: 'POST', body: JSON.stringify(body) });
     if (res && res.id) { showToast('✅ 已添加 ' + (res.name || code)); closeModal('addModal'); renderPage(currentPage); }
     else { showToast('❌ 添加失败: ' + (res?.error || '未知错误')); }
 }
@@ -468,6 +589,7 @@ async function showEditHolding(id) {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay show';
     modal.id = 'editModal';
+    const isDca = item.total_invested != null;
     modal.innerHTML = `
     <div class="modal-box">
         <div class="modal-header">
@@ -477,11 +599,18 @@ async function showEditHolding(id) {
         <div class="modal-body">
             <div style="margin-bottom:16px">
                 <strong>${item.name}</strong> <span style="color:#b5aea0;font-size:13px;">${item.code}</span>
+                ${isDca ? '<span class="tag-neutral" style="font-size:10px;margin-left:6px;">定投</span>' : ''}
             </div>
             <div class="form-row">
                 <div class="form-group"><label>可用份额</label><input id="editShares" type="number" step="0.01" min="0.01" value="${item.shares}" /></div>
-                <div class="form-group"><label>成本单价</label><input id="editCost" type="number" step="0.0001" min="0.001" value="${item.cost_nav}" /></div>
+                <div class="form-group"><label>${isDca ? '平均成本' : '成本单价'}</label><input id="editCost" type="number" step="0.0001" min="0.001" value="${item.cost_nav}" /></div>
             </div>
+            ${isDca ? `<div class="form-group"><label>累计投入金额（元）</label><input id="editInvest" type="number" step="0.01" min="0.01" value="${item.total_invested}" /></div>
+            <div class="form-row">
+                <div class="form-group"><label>每期金额（元）</label><input id="editDcaAmt" type="number" step="1" min="1" value="${item.dca_amount || ''}" /></div>
+                <div class="form-group"><label>定投频率</label><select id="editDcaFreq"><option value="daily" ${item.dca_frequency==='daily'?'selected':''}>每天</option><option value="weekly" ${item.dca_frequency==='weekly'?'selected':''}>每周</option><option value="monthly" ${item.dca_frequency==='monthly'?'selected':''}>每月</option></select></div>
+            </div>
+            <div class="form-group"><label>定投开始日期</label><input id="editDcaDate" type="date" value="${item.dca_start_date || ''}" /></div>` : ''}
             <div class="form-group"><label>备注</label><input id="editNotes" value="${item.notes || ''}" /></div>
         </div>
         <div class="modal-footer">
@@ -496,11 +625,19 @@ async function submitEdit(id) {
     const shares = parseFloat($('editShares').value);
     const cost = parseFloat($('editCost').value);
     const notes = $('editNotes')?.value || '';
+    const investInput = $('editInvest');
+    const totalInvested = investInput ? parseFloat(investInput.value) : null;
+    const dcaAmtInput = $('editDcaAmt');
+    const dcaAmt = dcaAmtInput ? parseFloat(dcaAmtInput.value) : null;
+    const dcaFreqInput = $('editDcaFreq');
+    const dcaFreq = dcaFreqInput ? dcaFreqInput.value : null;
+    const dcaDateInput = $('editDcaDate');
+    const dcaDate = dcaDateInput ? dcaDateInput.value : null;
     if (!shares || !cost) { showToast('请填写完整信息'); return; }
-    const res = await api(`/api/portfolio/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ shares, cost_nav: cost, notes })
-    });
+    const body = { shares, cost_nav: cost, notes };
+    if (totalInvested) body.total_invested = totalInvested;
+    if (dcaAmt) { body.dca_amount = dcaAmt; body.dca_frequency = dcaFreq; body.dca_start_date = dcaDate; }
+    const res = await api(`/api/portfolio/${id}`, { method: 'PUT', body: JSON.stringify(body) });
     if (res && res.updated) { showToast('✅ 修改成功'); closeModal('editModal'); renderPage(currentPage); }
     else { showToast('❌ 修改失败'); }
 }
@@ -823,6 +960,20 @@ function logout() {
 (async function() {
     const token = getToken();
     if (!token) {
+        // 开发模式：尝试自动登录
+        try {
+            const devResp = await fetch('/api/auth/dev-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const devData = await devResp.json();
+            if (devData && devData.token) {
+                localStorage.setItem('fund_token', devData.token);
+                renderPage('dashboard');
+                return;
+            }
+        } catch (e) { /* 非开发模式，继续正常流程 */ }
+        // 非开发模式：跳转登录页
         window.location.href = '/login';
         return;
     }

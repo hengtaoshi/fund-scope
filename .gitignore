@@ -13,6 +13,10 @@ backend/data/cache/
 .env
 *.env.local
 
+# Dev scripts (not for production)
+fix_auth.py
+run_local.bat
+
 # OS
 .DS_Store
 Thumbs.db
