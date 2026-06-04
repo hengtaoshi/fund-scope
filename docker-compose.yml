@@ -16,6 +16,8 @@ services:
       - /root/fund-cockpit:/root/fund-cockpit
       - /var/run/docker.sock:/var/run/docker.sock
       - /root/.git-credentials:/root/.git-credentials:ro
+      - /usr/bin/docker:/usr/local/bin/docker:ro
+      - /usr/libexec/docker/cli-plugins:/usr/local/lib/docker/cli-plugins:ro
     environment:
       - PORT=5000
       - JWT_SECRET=${JWT_SECRET}
