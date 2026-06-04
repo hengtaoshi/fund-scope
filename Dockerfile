@@ -16,7 +16,6 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git curl && \
     curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/static/stable/x86_64/docker-29.5.2.tgz | \
     tar xz -C /usr/local/bin --strip-components=1 docker/docker && \
-    apt-get remove -y curl && apt-get autoremove -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

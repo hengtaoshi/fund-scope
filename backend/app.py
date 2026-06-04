@@ -551,7 +551,7 @@ def deploy_webhook():
             return jsonify({"error": "git reset 失败", "detail": result_reset.stderr.strip()}), 500
 
         result_build = subprocess.run(
-            ["docker", "compose", "-f", os.path.join(project_dir, "docker-compose.yml"),
+            ["docker-compose", "-f", os.path.join(project_dir, "docker-compose.yml"),
              "up", "-d", "--build", "--remove-orphans"],
             capture_output=True, text=True, timeout=300
         )
