@@ -549,16 +549,14 @@ def deploy_webhook():
         if result_reset.returncode != 0:
             return jsonify({"error": "git reset 失败", "detail": result_reset.stderr.strip()}), 500
 
-        result_build = subprocess.run(
-            ["docker", "compose", "-f", os.path.join(project_dir, "docker-compose.yml"),
-             "up", "-d", "--build", "--remove-orphans"],
-            capture_output=True, text=True, timeout=300
-        )
-        if result_build.returncode != 0:
-            return jsonify({"error": "docker compose 失败", "detail": result_build.stderr.strip()}), 500
+        # 写入触发文件，由宿主机 cron 执行 docker compose up --build
+        trigger_file = os.path.join(project_dir, ".deploy-trigger")
+        with open(trigger_file, "w") as f:
+            f.write(body.get("head_commit", {}).get("message", "webhook"))
 
         return jsonify({
             "success": True,
+            "message": "已触发部署，宿主机将在 1 分钟内执行重建",
             "commit": body.get("head_commit", {}).get("message", ""),
             "author": body.get("head_commit", {}).get("author", {}).get("name", ""),
         })
