@@ -13,10 +13,8 @@ RUN sed -i 's|deb.debian.org|mirrors.ustc.edu.cn|g' /etc/apt/sources.list.d/debi
 
 # 安装 git + docker CLI（用于 Webhook 自动部署）
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git curl && \
-    curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.3.1.tgz | \
-    tar xz -C /usr/local/bin --strip-components=1 docker/docker && \
-    apt-get remove -y curl && apt-get autoremove -y && \
+    apt-get install -y --no-install-recommends git docker.io && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # 安装 Python 依赖
