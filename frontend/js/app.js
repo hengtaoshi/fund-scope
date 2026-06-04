@@ -74,6 +74,9 @@ function getToken() {
     return localStorage.getItem('fund_token') || '';
 }
 
+let _abortController = null;
+let _renderGeneration = 0;
+
 async function api(url, opts = {}) {
     try {
         const headers = {
@@ -82,18 +85,22 @@ async function api(url, opts = {}) {
         };
         const token = getToken();
         if (token) headers['Authorization'] = 'Bearer ' + token;
+        // 附加当前页面的取消信号，快速切换时自动中断旧请求
+        if (_abortController && !opts.signal) {
+            opts.signal = _abortController.signal;
+        }
         const res = await fetch(API + url, {
             headers,
             ...opts
         });
         if (res.status === 401) {
-            // 登录过期，跳转登录页
             localStorage.removeItem('fund_token');
             window.location.href = '/login';
             return null;
         }
         return await res.json();
     } catch (e) {
+        if (e.name === 'AbortError') throw e;  // 请求被取消，向上传递
         showToast('网络错误: ' + e.message);
         return null;
     }
@@ -204,6 +211,11 @@ async function autoRefresh(force) {
 }
 
 async function renderPage(page) {
+    // 取消上一个页面的所有未完成请求
+    if (_abortController) { _abortController.abort(); }
+    _abortController = new AbortController();
+    const generation = ++_renderGeneration;
+
     currentPage = page;
     // 清除旧定时器
     if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
@@ -217,7 +229,16 @@ async function renderPage(page) {
         settings: renderSettings,
     };
     content.innerHTML = '<div class="loading"><div class="spinner"></div>加载中...</div>';
-    if (fns[page]) await fns[page](content);
+    if (fns[page]) {
+        try {
+            await fns[page](content);
+        } catch (e) {
+            if (e.name === 'AbortError') return;  // 请求已被取消，忽略
+            throw e;
+        }
+    }
+    // 如果在此等待期间触发了新的渲染，丢弃本次结果
+    if (generation !== _renderGeneration) return;
     // 更新最后刷新时间
     updateLastRefreshTime();
     // 所有页面开启自动刷新：每 5 分钟自动更新数据
@@ -329,7 +350,13 @@ async function renderLineChart(code, period, forceRefresh) {
     if (typeof Chart === 'undefined') return;
     const canvas = $('lineChart');
     if (!canvas) return;
-    const d = await api(`/api/fund/${code}/nav${forceRefresh ? '?force=true' : ''}`);
+    let d;
+    try {
+        d = await api(`/api/fund/${code}/nav${forceRefresh ? '?force=true' : ''}`);
+    } catch (e) {
+        if (e.name === 'AbortError') return;
+        throw e;
+    }
     if (!d || !d.data) return;
     const data = filterByPeriod(d.data, period || chartPeriod);
     const labels = data.map(x => x.日期);
