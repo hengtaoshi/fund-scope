@@ -8,6 +8,9 @@ WORKDIR /app
 
 # akshare / numpy / pandas 均有 pre-built wheels，无需 gcc
 
+# 换 Debian 国内镜像源（加速 apt 下载）
+RUN sed -i 's|deb.debian.org|mirrors.ustc.edu.cn|g' /etc/apt/sources.list.d/debian.sources
+
 # 安装 git + docker CLI（用于 Webhook 自动部署）
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git curl && \
