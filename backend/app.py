@@ -532,7 +532,6 @@ def deploy_webhook():
     if ref != "refs/heads/master":
         return jsonify({"message": f"跳过非 master 分支"})
 
-    # 使用宿主机路径（容器内挂载了相同路径，docker compose 需要宿主机路径）
     project_dir = os.environ.get("PROJECT_DIR", os.path.dirname(BASE_DIR))
 
     try:
@@ -550,13 +549,50 @@ def deploy_webhook():
         if result_reset.returncode != 0:
             return jsonify({"error": "git reset 失败", "detail": result_reset.stderr.strip()}), 500
 
-        result_build = subprocess.run(
-            ["docker-compose", "-f", os.path.join(project_dir, "docker-compose.yml"),
-             "up", "-d", "--build", "--remove-orphans"],
-            capture_output=True, text=True, timeout=300
+        # 通过 Docker SDK 重建容器（直接通信 docker.sock，无需 docker CLI）
+        import docker as docker_sdk
+        client = docker_sdk.from_env()
+
+        client.images.build(
+            path=project_dir,
+            dockerfile="Dockerfile",
+            tag="fund-cockpit-flask",
+            rm=True,
         )
-        if result_build.returncode != 0:
-            return jsonify({"error": "docker compose 失败", "detail": result_build.stderr.strip()}), 500
+
+        try:
+            old = client.containers.get("fund-cockpit-api")
+            old.stop(timeout=10)
+            old.remove()
+        except docker_sdk.errors.NotFound:
+            pass
+
+        # 复制 docker-compose.yml 中定义的容器配置
+        client.containers.run(
+            "fund-cockpit-flask:latest",
+            name="fund-cockpit-api",
+            detach=True,
+            restart_policy={"Name": "unless-stopped"},
+            ports={"5000/tcp": ("127.0.0.1", 5000)},
+            environment={
+                "PORT": "5000",
+                "JWT_SECRET": os.environ.get("JWT_SECRET", ""),
+                "SMTP_SERVER": os.environ.get("SMTP_SERVER", "smtp.163.com"),
+                "SMTP_PORT": os.environ.get("SMTP_PORT", "465"),
+                "SMTP_USER": os.environ.get("SMTP_USER", ""),
+                "SMTP_PASS": os.environ.get("SMTP_PASS", ""),
+                "EMAIL_FROM": os.environ.get("EMAIL_FROM", ""),
+                "FROM_NAME": os.environ.get("FROM_NAME", "基金驾驶舱"),
+                "WEBHOOK_SECRET": os.environ.get("WEBHOOK_SECRET", ""),
+                "PROJECT_DIR": project_dir,
+            },
+            volumes={
+                "fund_data": {"bind": "/app/backend/data", "mode": "rw"},
+                project_dir: {"bind": project_dir, "mode": "rw"},
+                "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
+                "/root/.git-credentials": {"bind": "/root/.git-credentials", "mode": "ro"},
+            },
+        )
 
         return jsonify({
             "success": True,

@@ -11,11 +11,9 @@ WORKDIR /app
 # 换 Debian 国内镜像源（加速 apt 下载）
 RUN sed -i 's|deb.debian.org|mirrors.ustc.edu.cn|g' /etc/apt/sources.list.d/debian.sources
 
-# 安装 git + docker CLI（docker CLI 从阿里云镜像下载，download.docker.com 被墙）
+# 安装 git（Webhook 自动 git fetch + reset）
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git curl && \
-    curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/static/stable/x86_64/docker-29.5.2.tgz | \
-    tar xz -C /usr/local/bin --strip-components=1 docker/docker && \
+    apt-get install -y --no-install-recommends git && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
