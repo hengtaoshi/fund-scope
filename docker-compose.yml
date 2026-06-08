@@ -21,12 +21,14 @@ services:
     environment:
       - PORT=5000
       - JWT_SECRET=${JWT_SECRET}
-      - SMTP_SERVER=${SMTP_SERVER:-smtp.163.com}
+      - SMTP_SERVER=${SMTP_SERVER:-smtp.qq.com}
       - SMTP_PORT=${SMTP_PORT:-465}
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
       - EMAIL_FROM=${EMAIL_FROM}
       - FROM_NAME=${FROM_NAME:-基金驾驶舱}
+      - DAILY_REPORT_EMAIL=${DAILY_REPORT_EMAIL}
+      - DAILY_REPORT_TIME=${DAILY_REPORT_TIME:-20:00}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
       - PROJECT_DIR=/root/fund-cockpit
       - DEPLOY_NOTIFY_EMAIL=${DEPLOY_NOTIFY_EMAIL}

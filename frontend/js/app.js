@@ -1000,12 +1000,6 @@ function calcDCA() {
 function renderSettings(el) {
     el.innerHTML = `
     <div class="card" style="max-width:560px;">
-        <div class="card-title"><i class="fas fa-envelope"></i> 邮件通知</div>
-        <div class="form-group"><label>接收邮箱</label><input id="emailAddr" placeholder="your@email.com" value="${window._emailAddr||''}" oninput="window._emailAddr=this.value" /></div>
-        <button class="btn btn-primary" onclick="sendTestEmail()"><i class="fas fa-paper-plane"></i> 测试邮件</button>
-        <div style="margin-top:8px;font-size:12px;color:#b5aea0;">SMTP 配置通过后端环境变量设置</div>
-    </div>
-    <div class="card" style="max-width:560px;">
         <div class="card-title"><i class="fas fa-database"></i> 数据缓存</div>
         <button class="btn btn-outline" onclick="clearCache()"><i class="fas fa-trash"></i> 清除缓存</button>
     </div>
@@ -1018,13 +1012,6 @@ function renderSettings(el) {
             声明: 仅供参考，不构成投资建议
         </div>
     </div>`;
-}
-
-async function sendTestEmail() {
-    const email = $('emailAddr').value;
-    if (!email) { showToast('请先填写邮箱'); return; }
-    const res = await api('/api/test-email', { method: 'POST' });
-    showToast(res?.message || '请求失败');
 }
 
 async function clearCache() {

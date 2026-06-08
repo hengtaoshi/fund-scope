@@ -11,12 +11,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import re
 import shutil
 import subprocess
+import threading
+import time
+from datetime import datetime, date
 from functools import wraps
 from fund_data import get_fund_nav, get_fund_info, get_fund_manager, search_fund
 from database import init_db, add_holding, get_all_holdings, get_holding, update_holding, delete_holding, get_user_by_email, create_user
 from fund_analysis import calc_indicators, calc_signals, calc_score
-from email_sender import send_report, test_connection as test_smtp, send_deploy_notification
-from config import CACHE_DIR
+from email_sender import send_report, test_connection as test_smtp, send_deploy_notification, send_daily_report
+from config import CACHE_DIR, DAILY_REPORT_EMAIL, DAILY_REPORT_TIME
 # 默认 JWT_SECRET（生产环境应用环境变量覆盖）
 if not os.environ.get("JWT_SECRET"):
     os.environ["JWT_SECRET"] = "fund-dashboard-jwt-secret-key-2025"
@@ -530,6 +533,62 @@ def api_test_email():
     return jsonify(result), status
 
 
+@app.route("/api/send-daily-report", methods=["POST"])
+@login_required
+def api_send_daily_report():
+    """发送每日收益报告"""
+    if not DAILY_REPORT_EMAIL:
+        return jsonify({"error": "DAILY_REPORT_EMAIL 未设置"}), 400
+
+    holdings = get_all_holdings(request.current_user['user_id'])
+    if not holdings:
+        return jsonify({"error": "暂无持仓"}), 404
+
+    results = []
+    total_val = 0
+    total_daily = 0
+    total_profit = 0
+    for h in holdings:
+        nav_df = get_fund_nav(h["code"], force_refresh=True)
+        if nav_df.empty:
+            continue
+        nav_vals = nav_df["单位净值"].values
+        latest_nav = float(nav_vals[-1])
+        yesterday_nav = float(nav_vals[-2]) if len(nav_vals) >= 2 else latest_nav
+        current_total = h["shares"] * latest_nav
+        cost_total = h["shares"] * h["cost_nav"]
+        yesterday_total = h["shares"] * yesterday_nav
+        daily_profit = round(current_total - yesterday_total, 2)
+        daily_return_pct = round((latest_nav - yesterday_nav) / yesterday_nav * 100, 2) if yesterday_nav > 0 else 0
+        profit = round(current_total - cost_total, 2)
+        return_pct = round(profit / cost_total * 100, 2) if cost_total > 0 else 0
+
+        total_val += current_total
+        total_daily += daily_profit
+        total_profit += profit
+
+        results.append({
+            "name": h["name"],
+            "code": h["code"],
+            "shares": h["shares"],
+            "current_nav": latest_nav,
+            "yesterday_nav": yesterday_nav,
+            "daily_profit": daily_profit,
+            "daily_return_pct": daily_return_pct,
+            "profit": profit,
+            "return_pct": return_pct,
+            "current_total": round(current_total, 2),
+        })
+
+    result = send_daily_report(DAILY_REPORT_EMAIL, results, {
+        "total_val": round(total_val, 2),
+        "total_daily_profit": round(total_daily, 2),
+        "total_profit": round(total_profit, 2),
+    })
+    status = 200 if result["success"] else 500
+    return jsonify(result), status
+
+
 # ====== 前端页面 ======
 
 
@@ -620,8 +679,95 @@ def deploy_webhook():
         return jsonify({"error": str(e)}), 500
 
 
+# ====== 每日报告定时调度 ======
+
+_scheduler_running = False
+_last_report_date = None  # 防止同一天重复发送
+
+
+def _daily_report_scheduler():
+    """后台线程：每天在 DAILY_REPORT_TIME 触发一次每日报告"""
+    global _scheduler_running, _last_report_date
+    _scheduler_running = True
+    print(f"[调度器] 每日报告已启动，计划时间 {DAILY_REPORT_TIME}")
+
+    while _scheduler_running:
+        try:
+            now = datetime.now()
+            target_h, target_m = map(int, DAILY_REPORT_TIME.split(":"))
+            # 计算距离下一次触发还有多久
+            target = now.replace(hour=target_h, minute=target_m, second=0, microsecond=0)
+            if target <= now:
+                target = target.replace(day=now.day + 1)  # 明天同一时间
+            wait_seconds = (target - now).total_seconds()
+            # 最多等 120 秒就重新检查一次（避免 sleep 过长）
+            while wait_seconds > 0 and _scheduler_running:
+                time.sleep(min(wait_seconds, 120))
+                wait_seconds -= 120
+                if not _scheduler_running:
+                    break
+
+            if not _scheduler_running:
+                break
+
+            today_str = date.today().isoformat()
+            if _last_report_date == today_str:
+                continue  # 今天已发送，跳过
+
+            # 发送每日报告
+            if DAILY_REPORT_EMAIL:
+                try:
+                    from database import get_all_holdings
+                    holdings = get_all_holdings(1)  # user_id=1
+                    if holdings:
+                        results = []
+                        total_val = total_daily = total_profit = 0
+                        for h in holdings:
+                            nav_df = get_fund_nav(h["code"], force_refresh=True)
+                            if nav_df.empty:
+                                continue
+                            nav_vals = nav_df["单位净值"].values
+                            latest_nav = float(nav_vals[-1])
+                            yesterday_nav = float(nav_vals[-2]) if len(nav_vals) >= 2 else latest_nav
+                            current_total = h["shares"] * latest_nav
+                            cost_total = h["shares"] * h["cost_nav"]
+                            daily_profit = round(current_total - h["shares"] * yesterday_nav, 2)
+                            daily_pct = round((latest_nav - yesterday_nav) / yesterday_nav * 100, 2) if yesterday_nav > 0 else 0
+                            profit = round(current_total - cost_total, 2)
+                            return_pct = round(profit / cost_total * 100, 2) if cost_total > 0 else 0
+                            total_val += current_total
+                            total_daily += daily_profit
+                            total_profit += profit
+                            results.append({
+                                "name": h["name"], "code": h["code"], "shares": h["shares"],
+                                "current_nav": latest_nav, "yesterday_nav": yesterday_nav,
+                                "daily_profit": daily_profit, "daily_return_pct": daily_pct,
+                                "profit": profit, "return_pct": return_pct,
+                                "current_total": round(current_total, 2),
+                            })
+                        totals = {"total_val": round(total_val, 2), "total_daily_profit": round(total_daily, 2), "total_profit": round(total_profit, 2)}
+                        send_daily_report(DAILY_REPORT_EMAIL, results, totals)
+                        _last_report_date = today_str
+                        print(f"[调度器] 每日报告已发送 → {DAILY_REPORT_EMAIL}")
+                except Exception as e:
+                    print(f"[调度器] 发送失败: {e}")
+        except Exception as e:
+            print(f"[调度器] 异常: {e}")
+            time.sleep(300)  # 出错等 5 分钟再重试
+
+
+def start_scheduler():
+    """启动每日报告后台线程"""
+    if not DAILY_REPORT_EMAIL:
+        print("[调度器] DAILY_REPORT_EMAIL 未设置，跳过")
+        return
+    t = threading.Thread(target=_daily_report_scheduler, daemon=True)
+    t.start()
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     debug = os.getenv("FLASK_DEBUG", "0").lower() in ("1", "true")
     print(f"基金驾驶舱后端启动 http://127.0.0.1:{port}  debug={debug}")
+    start_scheduler()
     app.run(host="0.0.0.0", port=port, debug=debug)

@@ -11,6 +11,10 @@ SMTP_PASS = os.getenv("SMTP_PASS", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "")
 FROM_NAME = os.getenv("FROM_NAME", "基金驾驶舱")  # 发件人显示名称，隐藏个人邮箱
 
+# 每日收益报告
+DAILY_REPORT_EMAIL = os.getenv("DAILY_REPORT_EMAIL", "")
+DAILY_REPORT_TIME = os.getenv("DAILY_REPORT_TIME", "20:00")  # 格式 HH:MM
+
 # 数据缓存
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "data", "cache")
 CACHE_EXPIRE_HOURS = 4  # 缓存有效期
