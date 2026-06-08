@@ -262,13 +262,19 @@ async function autoRefreshDashboard() {
     const totalCost = h.reduce((s, x) => s + x.cost_total, 0);
     const totalProfit = totalVal - totalCost;
     const totalPct = totalCost > 0 ? totalProfit / totalCost * 100 : 0;
+    const totalDailyProfit = h.reduce((s, x) => s + (x.daily_profit || 0), 0);
+    const dailyPct = (totalVal - totalDailyProfit) > 0 ? totalDailyProfit / (totalVal - totalDailyProfit) * 100 : 0;
     const cards = qsa('.stat-value');
-    if (cards.length >= 4) {
+    if (cards.length >= 5) {
         cards[0].textContent = fmtMoney(totalVal);
         cards[1].textContent = fmtMoney(totalProfit);
         cards[1].className = 'stat-value ' + cls(totalProfit);
-        const changeEl = cards[1].nextElementSibling;
+        let changeEl = cards[1].nextElementSibling;
         if (changeEl) { changeEl.textContent = fmtPct(totalPct); changeEl.className = 'stat-change ' + cls(totalProfit); }
+        cards[2].textContent = fmtMoney(totalDailyProfit);
+        cards[2].className = 'stat-value ' + cls(totalDailyProfit);
+        changeEl = cards[2].nextElementSibling;
+        if (changeEl) { changeEl.textContent = fmtPct(dailyPct); changeEl.className = 'stat-change ' + cls(totalDailyProfit); }
     }
     // 更新饼图
     renderPieChart(h);
@@ -338,6 +344,7 @@ async function renderDashboard(el) {
     const totalCost = h.reduce((s, x) => s + x.cost_total, 0);
     const totalProfit = totalVal - totalCost;
     const totalPct = totalCost > 0 ? totalProfit / totalCost * 100 : 0;
+    const totalDailyProfit = h.reduce((s, x) => s + (x.daily_profit || 0), 0);
 
     selectedFund = selectedFund || h[0].code;
     window._holdingsList = h;
@@ -346,6 +353,7 @@ async function renderDashboard(el) {
         <div class="stats">
             <div class="card stat-card"><div class="stat-label">总资产</div><div class="stat-value">${fmtMoney(totalVal)}</div></div>
             <div class="card stat-card"><div class="stat-label">累计收益</div><div class="stat-value ${cls(totalProfit)}">${fmtMoney(totalProfit)}</div><div class="stat-change ${cls(totalProfit)}">${fmtPct(totalPct)}</div></div>
+            <div class="card stat-card"><div class="stat-label">昨日收益</div><div class="stat-value ${cls(totalDailyProfit)}">${fmtMoney(totalDailyProfit)}</div><div class="stat-change ${cls(totalDailyProfit)}">${fmtPct(totalDailyProfit ? totalDailyProfit / (totalVal - totalDailyProfit) * 100 : 0)}</div></div>
             <div class="card stat-card"><div class="stat-label">持仓数量</div><div class="stat-value">${h.length}</div></div>
             <div class="card stat-card"><div class="stat-label">数据来源</div><div class="stat-value" style="font-size:18px;color:#c7883c;">akshare</div></div>
         </div>
@@ -361,7 +369,7 @@ async function renderDashboard(el) {
         </div>
         <div class="card"><div class="card-title"><i class="fas fa-list"></i> 持仓明细</div>
         <table>
-            <thead><tr><th>基金名称</th><th>可用份额</th><th>平均成本</th><th>累计投入</th><th>最新净值</th><th>持仓市值</th><th>收益</th><th>收益率</th><th></th></tr></thead>
+            <thead><tr><th>基金名称</th><th>可用份额</th><th>平均成本</th><th>累计投入</th><th>最新净值</th><th>持仓市值</th><th>收益</th><th>收益率</th><th>较昨日</th><th></th></tr></thead>
             <tbody>${h.map(x => {
                 const isDca = x.total_invested != null;
                 const info = dcaInfo[x.id];
@@ -373,7 +381,8 @@ async function renderDashboard(el) {
                 const dcaSub = isDca
                     ? '<br><span style="font-size:10px;color:#b5aea0;">' + (stopped ? '已终止' : '定投中') + ' · 从' + (x.dca_start_date ? x.dca_start_date.slice(0,10) : '') + (stopped && x.dca_end_date ? '至' + x.dca_end_date.slice(0,10) : '') + '</span>'
                     : '';
-                return `<tr><td><strong>${x.name}</strong>${statusTag}${dcaSub}</td><td>${fmt(x.shares)}</td><td>${x.cost_nav.toFixed(4)}</td><td>${fmtMoney(invested)}</td><td class="${cls(x.profit)}">${x.current_nav.toFixed(4)}</td><td class="${cls(x.profit)}">${fmtMoney(x.current_total)}</td><td class="${cls(x.profit)}">${fmtMoney(x.profit)}</td><td><span class="${tagCls(x.profit)}">${fmtPct(x.return_pct)}</span></td><td><button class="btn btn-outline btn-sm" onclick="goAnalysis('${x.code}')">详情</button></td></tr>`;
+                const daily = x.daily_profit || 0;
+                return `<tr><td><strong>${x.name}</strong>${statusTag}${dcaSub}</td><td>${fmt(x.shares)}</td><td>${x.cost_nav.toFixed(4)}</td><td>${fmtMoney(invested)}</td><td class="${cls(x.profit)}">${x.current_nav.toFixed(4)}</td><td class="${cls(x.profit)}">${fmtMoney(x.current_total)}</td><td class="${cls(x.profit)}">${fmtMoney(x.profit)}</td><td><span class="${tagCls(x.profit)}">${fmtPct(x.return_pct)}</span></td><td class="${cls(daily)}"><span style="font-size:13px;">${fmtMoney(daily)}</span><br><span style="font-size:10px;" class="${cls(daily)}">${fmtPct(x.daily_return_pct || 0)}</span></td><td><button class="btn btn-outline btn-sm" onclick="goAnalysis('${x.code}')">详情</button></td></tr>`;
             }).join('')}</tbody>
         </table></div>`;
 

@@ -337,8 +337,14 @@ def portfolio_list():
     for h in holdings:
         nav_df = get_fund_nav(h["code"], force_refresh=force)
         latest_nav = float(nav_df["单位净值"].iloc[-1]) if not nav_df.empty else 0
+        # 昨日（上一交易日）净值
+        nav_vals = nav_df["单位净值"].values if not nav_df.empty else []
+        yesterday_nav = float(nav_vals[-2]) if len(nav_vals) >= 2 else latest_nav
         cost_total = h["shares"] * h["cost_nav"]
         current_total = h["shares"] * latest_nav
+        yesterday_total = h["shares"] * yesterday_nav
+        daily_profit = round(current_total - yesterday_total, 2)
+        daily_return_pct = round((latest_nav - yesterday_nav) / yesterday_nav * 100, 2) if yesterday_nav > 0 else 0
         results.append({
             "id": h["id"],
             "code": h["code"],
@@ -346,16 +352,20 @@ def portfolio_list():
             "shares": h["shares"],
             "cost_nav": h["cost_nav"],
             "current_nav": latest_nav,
+            "yesterday_nav": yesterday_nav,
             "cost_total": round(cost_total, 2),
             "current_total": round(current_total, 2),
             "profit": round(current_total - cost_total, 2),
             "return_pct": round((current_total - cost_total) / cost_total * 100, 2) if cost_total > 0 else 0,
+            "daily_profit": daily_profit,
+            "daily_return_pct": daily_return_pct,
             "added_at": h["added_at"],
             "notes": h["notes"],
             "total_invested": h.get("total_invested"),
             "dca_start_date": h.get("dca_start_date"),
             "dca_amount": h.get("dca_amount"),
             "dca_frequency": h.get("dca_frequency"),
+            "dca_end_date": h.get("dca_end_date"),
         })
     return jsonify({"holdings": results})
 
