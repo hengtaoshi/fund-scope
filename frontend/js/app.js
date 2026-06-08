@@ -278,6 +278,53 @@ async function autoRefreshDashboard() {
         if (canvas) renderLineChart(selectedFund, chartPeriod, true);
     }
 }
+// 同步所有定投持仓的累计投入到当前日期（静默更新数据库 + 本地值）
+// 返回 { [id]: { startNav, currentNav, expectedInvested, isStopped } }
+async function syncDcaHoldings(holdings) {
+    const dcaInfo = {};
+    for (const x of holdings) {
+        if (x.total_invested == null || !x.dca_start_date) continue;
+        try {
+            const navData = await api(`/api/fund/${x.code}/nav`);
+            if (!navData || !navData.data) continue;
+            const startIdx = navData.data.findIndex(d => d.日期 >= x.dca_start_date);
+            if (startIdx < 0) continue;
+            const start = navData.data[startIdx];
+            const lastNavDate = navData.data[navData.data.length - 1].日期;
+            const cutoffDate = x.dca_end_date || lastNavDate;
+            const endIdx = navData.data.findIndex(d => d.日期 > cutoffDate);
+            const effectiveNavs = navData.data.slice(startIdx, endIdx >= 0 ? endIdx : navData.data.length);
+            let buyCount = 0;
+            if (x.dca_amount && x.dca_frequency) {
+                if (x.dca_frequency === 'daily') {
+                    buyCount = effectiveNavs.length;
+                } else if (x.dca_frequency === 'weekly') {
+                    buyCount = effectiveNavs.filter((_, i) => i % 5 === 0).length;
+                } else if (x.dca_frequency === 'monthly') {
+                    const seen = new Set();
+                    buyCount = effectiveNavs.filter(d => { const m = d.日期.slice(0,7); if (seen.has(m)) return false; seen.add(m); return true; }).length;
+                }
+            }
+            const expectedInvested = buyCount * (x.dca_amount || 0);
+            const row = navData.data[navData.data.length - 1];
+            dcaInfo[x.id] = {
+                startNav: start ? start.单位净值 : null,
+                currentNav: row ? row.单位净值 : null,
+                expectedInvested: expectedInvested,
+                isStopped: !!x.dca_end_date,
+            };
+            if (expectedInvested > 0 && Math.abs(expectedInvested - (x.total_invested || 0)) > 0.01) {
+                x.total_invested = expectedInvested;
+                api(`/api/portfolio/${x.id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ total_invested: expectedInvested })
+                });
+            }
+        } catch (e) { /* 单条失败静默跳过 */ }
+    }
+    return dcaInfo;
+}
+
 async function renderDashboard(el) {
     const data = await api('/api/portfolio');
     if (!data || !data.holdings || data.holdings.length === 0) {
@@ -285,6 +332,8 @@ async function renderDashboard(el) {
         return;
     }
     const h = data.holdings;
+    // 先同步定投金额到当前日期
+    const dcaInfo = await syncDcaHoldings(h);
     const totalVal = h.reduce((s, x) => s + x.current_total, 0);
     const totalCost = h.reduce((s, x) => s + x.cost_total, 0);
     const totalProfit = totalVal - totalCost;
@@ -314,9 +363,17 @@ async function renderDashboard(el) {
         <table>
             <thead><tr><th>基金名称</th><th>可用份额</th><th>平均成本</th><th>累计投入</th><th>最新净值</th><th>持仓市值</th><th>收益</th><th>收益率</th><th></th></tr></thead>
             <tbody>${h.map(x => {
-                const invested = x.total_invested != null ? x.total_invested : x.cost_total;
                 const isDca = x.total_invested != null;
-                return `<tr><td><strong>${x.name}</strong>${isDca ? '<br><span style="font-size:10px;color:#b5aea0;">定投从' + (x.dca_start_date ? x.dca_start_date.slice(0,10) : '') + '</span>' : ''}</td><td>${fmt(x.shares)}</td><td>${x.cost_nav.toFixed(4)}</td><td>${fmtMoney(invested)}</td><td class="${cls(x.profit)}">${x.current_nav.toFixed(4)}</td><td class="${cls(x.profit)}">${fmtMoney(x.current_total)}</td><td class="${cls(x.profit)}">${fmtMoney(x.profit)}</td><td><span class="${tagCls(x.profit)}">${fmtPct(x.return_pct)}</span></td><td><button class="btn btn-outline btn-sm" onclick="goAnalysis('${x.code}')">详情</button></td></tr>`;
+                const info = dcaInfo[x.id];
+                const invested = (isDca && info && info.expectedInvested > 0) ? info.expectedInvested : (isDca ? x.total_invested : x.cost_total);
+                const stopped = isDca && info && info.isStopped;
+                const statusTag = isDca
+                    ? (stopped ? ' <span style="font-size:10px;color:#9e9e9e;">⏸</span>' : ' <span style="font-size:10px;color:#4caf50;">●</span>')
+                    : '';
+                const dcaSub = isDca
+                    ? '<br><span style="font-size:10px;color:#b5aea0;">' + (stopped ? '已终止' : '定投中') + ' · 从' + (x.dca_start_date ? x.dca_start_date.slice(0,10) : '') + (stopped && x.dca_end_date ? '至' + x.dca_end_date.slice(0,10) : '') + '</span>'
+                    : '';
+                return `<tr><td><strong>${x.name}</strong>${statusTag}${dcaSub}</td><td>${fmt(x.shares)}</td><td>${x.cost_nav.toFixed(4)}</td><td>${fmtMoney(invested)}</td><td class="${cls(x.profit)}">${x.current_nav.toFixed(4)}</td><td class="${cls(x.profit)}">${fmtMoney(x.current_total)}</td><td class="${cls(x.profit)}">${fmtMoney(x.profit)}</td><td><span class="${tagCls(x.profit)}">${fmtPct(x.return_pct)}</span></td><td><button class="btn btn-outline btn-sm" onclick="goAnalysis('${x.code}')">详情</button></td></tr>`;
             }).join('')}</tbody>
         </table></div>`;
 
@@ -426,39 +483,8 @@ async function renderPortfolio(el) {
     const data = await api('/api/portfolio');
     const h = data && data.holdings ? data.holdings : [];
 
-    // 对定投基金获取开始日净值对比
-    const dcaInfo = {};
-    for (const x of h) {
-        if (x.total_invested && x.dca_start_date) {
-            const navData = await api(`/api/fund/${x.code}/nav`);
-            if (navData && navData.data) {
-                const startIdx = navData.data.findIndex(d => d.日期 >= x.dca_start_date);
-                const start = startIdx >= 0 ? navData.data[startIdx] : null;
-                const row = navData.data[navData.data.length - 1];
-                // 计算理论期数和理论投入
-                let periods = 0;
-                if (x.dca_amount && x.dca_frequency) {
-                    const totalDays = navData.data.length - startIdx;
-                    if (x.dca_frequency === 'daily') {
-                        periods = totalDays; // 交易日数
-                    } else if (x.dca_frequency === 'weekly') {
-                        periods = Math.ceil(totalDays / 5);
-                    } else if (x.dca_frequency === 'monthly') {
-                        // 从开始月到当前月
-                        const s = new Date(x.dca_start_date);
-                        const e = new Date(navData.data[navData.data.length - 1].日期);
-                        periods = (e.getFullYear() - s.getFullYear()) * 12 + e.getMonth() - s.getMonth() + 1;
-                    }
-                }
-                dcaInfo[x.id] = {
-                    startNav: start ? start.单位净值 : null,
-                    currentNav: row ? row.单位净值 : null,
-                    expectedPeriods: periods,
-                    expectedInvested: periods * (x.dca_amount || 0),
-                };
-            }
-        }
-    }
+    // 同步定投金额到当前日期（共用函数）
+    const dcaInfo = await syncDcaHoldings(h);
 
     el.innerHTML = `
         <div style="margin-bottom:16px"><button class="btn btn-primary" onclick="showAddHolding()"><i class="fas fa-plus"></i> 添加持仓</button></div>
@@ -467,14 +493,26 @@ async function renderPortfolio(el) {
             <thead><tr><th>代码</th><th>名称</th><th>可用份额</th><th>平均成本</th><th>累计投入</th><th>最新净值</th><th>市值</th><th>收益</th><th>收益率</th><th></th></tr></thead>
             <tbody>${h.map(x => {
                 const isDca = x.total_invested != null;
-                const invested = isDca ? x.total_invested : x.cost_total;
+                const info = dcaInfo[x.id];
+                const invested = (isDca && info && info.expectedInvested > 0) ? info.expectedInvested : (isDca ? x.total_invested : x.cost_total);
+                const stopped = info && info.isStopped;
+                const statusBadge = isDca
+                    ? (stopped
+                        ? '<span style="font-size:10px;background:#9e9e9e;color:#fff;padding:1px 6px;border-radius:3px;">⏸ 已终止</span>'
+                        : '<span style="font-size:10px;background:#4caf50;color:#fff;padding:1px 6px;border-radius:3px;">● 定投中</span>')
+                    : '';
+                const freqLabel = x.dca_frequency === 'daily' ? '天' : x.dca_frequency === 'weekly' ? '周' : '月';
+                const dcaActionBtn = isDca
+                    ? (stopped
+                        ? `<br><button class="btn btn-outline btn-sm" onclick="resumeDca(${x.id})" style="margin-top:4px;font-size:11px;color:#4caf50;">▶ 恢复投入</button>`
+                        : `<br><button class="btn btn-outline btn-sm" onclick="stopDca(${x.id})" style="margin-top:4px;font-size:11px;color:#e57373;">⏹ 终止投入</button>`)
+                    : '';
                 return `<tr>
-                <td>${x.code}</td><td><strong>${x.name}</strong>${isDca ? ' <span class="tag-neutral" style="font-size:10px;">定投</span>' : ''}<br>
-                ${isDca && x.dca_start_date ? `<span style="font-size:11px;color:#b5aea0;">从 ${x.dca_start_date.slice(0,10)} 开始</span>` : ''}
-                ${isDca && x.dca_amount ? `<br><span style="font-size:11px;color:#b5aea0;">${x.dca_amount}元/${x.dca_frequency === 'daily' ? '天' : x.dca_frequency === 'weekly' ? '周' : '月'}</span>` : ''}
-                ${isDca && dcaInfo[x.id] && dcaInfo[x.id].startNav ? `<br><span style="font-size:11px;color:#5a544a;">净值 ${dcaInfo[x.id].startNav.toFixed(4)} → ${dcaInfo[x.id].currentNav.toFixed(4)} <span class="${cls(dcaInfo[x.id].currentNav - dcaInfo[x.id].startNav)}">${((dcaInfo[x.id].currentNav / dcaInfo[x.id].startNav - 1) * 100).toFixed(1)}%</span></span>` : ''}
-                ${isDca && dcaInfo[x.id] && dcaInfo[x.id].expectedPeriods > 0 ? `<br><span style="font-size:11px;color:#b5aea0;">应投 ${dcaInfo[x.id].expectedPeriods} 期 · 应投入 ${fmtMoney(dcaInfo[x.id].expectedInvested)}</span>` : ''}
-                ${isDca && dcaInfo[x.id] && dcaInfo[x.id].expectedInvested > 0 && x.total_invested ? `<br><span style="font-size:11px;color:#5a544a;">实际投入 ${fmtMoney(x.total_invested)} · ${cls(x.total_invested - dcaInfo[x.id].expectedInvested)}差额 ${fmtMoney(x.total_invested - dcaInfo[x.id].expectedInvested)}</span>` : ''}
+                <td>${x.code}</td><td><strong>${x.name}</strong> ${statusBadge}<br>
+                ${isDca && x.dca_start_date ? `<span style="font-size:11px;color:#b5aea0;">从 ${x.dca_start_date.slice(0,10)} 开始${stopped ? ' · 至 ' + x.dca_end_date.slice(0,10) : ''}</span>` : ''}
+                ${isDca && x.dca_amount ? `<br><span style="font-size:11px;color:#b5aea0;">${x.dca_amount}元/${freqLabel}</span>` : ''}
+                ${isDca && info && info.startNav ? `<br><span style="font-size:11px;color:#5a544a;">净值 ${info.startNav.toFixed(4)} → ${info.currentNav.toFixed(4)} <span class="${cls(info.currentNav - info.startNav)}">${((info.currentNav / info.startNav - 1) * 100).toFixed(1)}%</span></span>` : ''}
+                ${dcaActionBtn}
                 </td>
                 <td>${fmt(x.shares)}</td>
                 <td>${x.cost_nav.toFixed(4)}</td>
@@ -495,6 +533,22 @@ async function renderPortfolio(el) {
             <div class="card stat-card"><div class="stat-label">总市值</div><div class="stat-value" style="font-size:20px;">${fmtMoney(h.reduce((s,x)=>s+x.current_total,0))}</div></div>
             <div class="card stat-card"><div class="stat-label">总收益</div><div class="stat-value ${cls(h.reduce((s,x)=>s+x.profit,0))}" style="font-size:20px;">${fmtMoney(h.reduce((s,x)=>s+x.profit,0))}</div></div>
         </div>`}`;
+}
+
+// 终止定投
+async function stopDca(id) {
+    if (!confirm('确认终止该定投计划？终止后累计投入将冻结在当天。')) return;
+    const res = await api(`/api/portfolio/${id}/stop-dca`, { method: 'POST' });
+    if (res && res.stopped) { showToast('⏸ 定投已终止'); renderPage('portfolio'); }
+    else { showToast('❌ 操作失败: ' + (res?.error || '未知错误')); }
+}
+
+// 恢复定投
+async function resumeDca(id) {
+    if (!confirm('确认恢复该定投计划？系统将补算终止期间的所有期数。')) return;
+    const res = await api(`/api/portfolio/${id}/resume-dca`, { method: 'POST' });
+    if (res && res.resumed) { showToast('▶ 定投已恢复'); renderPage('portfolio'); }
+    else { showToast('❌ 操作失败: ' + (res?.error || '未知错误')); }
 }
 
 function showAddHolding() {

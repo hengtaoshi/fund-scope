@@ -7,6 +7,8 @@ import sqlite3
 import os
 from datetime import datetime
 
+_UNSET = object()  # sentinel：区分"不更新该字段"与"显式设为 None/NULL"
+
 DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 DB_PATH = os.path.join(DB_DIR, "portfolio.db")
 
@@ -50,6 +52,8 @@ def init_db():
         conn.execute("ALTER TABLE holdings ADD COLUMN dca_amount REAL DEFAULT NULL")
     if "dca_frequency" not in cols:
         conn.execute("ALTER TABLE holdings ADD COLUMN dca_frequency TEXT DEFAULT NULL")
+    if "dca_end_date" not in cols:
+        conn.execute("ALTER TABLE holdings ADD COLUMN dca_end_date TEXT DEFAULT NULL")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_holdings_user_id ON holdings(user_id)")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -72,12 +76,12 @@ def init_db():
     conn.close()
 
 
-def add_holding(user_id: int, code: str, name: str, shares: float, cost_nav: float, notes: str = "", total_invested: float = None, dca_start_date: str = None, dca_amount: float = None, dca_frequency: str = None) -> int:
+def add_holding(user_id: int, code: str, name: str, shares: float, cost_nav: float, notes: str = "", total_invested: float = None, dca_start_date: str = None, dca_amount: float = None, dca_frequency: str = None, dca_end_date: str = None) -> int:
     """添加持仓，返回 id"""
     conn = _get_conn()
     cursor = conn.execute(
-        "INSERT INTO holdings (user_id, code, name, shares, cost_nav, added_at, notes, total_invested, dca_start_date, dca_amount, dca_frequency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (user_id, code, name, shares, cost_nav, datetime.now().isoformat(), notes, total_invested, dca_start_date, dca_amount, dca_frequency),
+        "INSERT INTO holdings (user_id, code, name, shares, cost_nav, added_at, notes, total_invested, dca_start_date, dca_amount, dca_frequency, dca_end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (user_id, code, name, shares, cost_nav, datetime.now().isoformat(), notes, total_invested, dca_start_date, dca_amount, dca_frequency, dca_end_date),
     )
     conn.commit()
     holding_id = cursor.lastrowid
@@ -105,7 +109,7 @@ def get_holding(holding_id: int, user_id: int) -> dict | None:
     return dict(row) if row else None
 
 
-def update_holding(holding_id: int, user_id: int, shares: float | None = None, cost_nav: float | None = None, notes: str | None = None, total_invested: float | None = None, dca_start_date: str | None = None, dca_amount: float | None = None, dca_frequency: str | None = None) -> bool:
+def update_holding(holding_id: int, user_id: int, shares: float | None = None, cost_nav: float | None = None, notes: str | None = None, total_invested: float | None = None, dca_start_date: str | None = None, dca_amount: float | None = None, dca_frequency: str | None = None, dca_end_date: str | None = _UNSET) -> bool:
     """更新持仓（校验所属用户），返回是否更新成功"""
     conn = _get_conn()
     fields = []
@@ -131,6 +135,9 @@ def update_holding(holding_id: int, user_id: int, shares: float | None = None, c
     if dca_frequency is not None:
         fields.append("dca_frequency = ?")
         values.append(dca_frequency)
+    if dca_end_date is not _UNSET:
+        fields.append("dca_end_date = ?")
+        values.append(dca_end_date)  # None = 显式清空为 NULL
     if not fields:
         conn.close()
         return False

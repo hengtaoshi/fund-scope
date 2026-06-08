@@ -385,7 +385,8 @@ def portfolio_add():
     dca_start_date = data.get("dca_start_date")
     dca_amount = data.get("dca_amount")
     dca_frequency = data.get("dca_frequency")
-    holding_id = add_holding(request.current_user['user_id'], code, name, shares, cost_nav, notes, total_invested, dca_start_date, dca_amount, dca_frequency)
+    dca_end_date = data.get("dca_end_date")
+    holding_id = add_holding(request.current_user['user_id'], code, name, shares, cost_nav, notes, total_invested, dca_start_date, dca_amount, dca_frequency, dca_end_date)
     return jsonify({"id": holding_id, "name": name}), 201
 
 
@@ -411,7 +412,8 @@ def portfolio_update(holding_id: int):
     dca_start_date = data.get("dca_start_date")
     dca_amount = data.get("dca_amount")
     dca_frequency = data.get("dca_frequency")
-    ok = update_holding(holding_id, request.current_user['user_id'], shares, cost_nav, notes, total_invested, dca_start_date, dca_amount, dca_frequency)
+    dca_end_date = data.get("dca_end_date")
+    ok = update_holding(holding_id, request.current_user['user_id'], shares, cost_nav, notes, total_invested, dca_start_date, dca_amount, dca_frequency, dca_end_date)
     return jsonify({"updated": ok}), 200 if ok else 304
 
 
@@ -421,6 +423,38 @@ def portfolio_delete(holding_id: int):
     """删除持仓"""
     ok = delete_holding(holding_id, request.current_user['user_id'])
     return jsonify({"deleted": ok}), 200 if ok else 404
+
+
+@app.route("/api/portfolio/<int:holding_id>/stop-dca", methods=["POST"])
+@login_required
+def portfolio_stop_dca(holding_id: int):
+    """终止定投：设置 dca_end_date 为今天，冻结累计投入"""
+    from datetime import date
+    holding = get_holding(holding_id, request.current_user['user_id'])
+    if not holding:
+        return jsonify({"error": "持仓不存在"}), 404
+    if not holding.get("dca_start_date"):
+        return jsonify({"error": "该持仓非定投模式"}), 400
+    if holding.get("dca_end_date"):
+        return jsonify({"error": "定投已终止"}), 400
+    today = date.today().isoformat()
+    ok = update_holding(holding_id, request.current_user['user_id'], dca_end_date=today)
+    return jsonify({"stopped": ok, "dca_end_date": today}), 200 if ok else 304
+
+
+@app.route("/api/portfolio/<int:holding_id>/resume-dca", methods=["POST"])
+@login_required
+def portfolio_resume_dca(holding_id: int):
+    """恢复定投：清除 dca_end_date"""
+    holding = get_holding(holding_id, request.current_user['user_id'])
+    if not holding:
+        return jsonify({"error": "持仓不存在"}), 404
+    if not holding.get("dca_start_date"):
+        return jsonify({"error": "该持仓非定投模式"}), 400
+    if not holding.get("dca_end_date"):
+        return jsonify({"error": "定投未终止"}), 400
+    ok = update_holding(holding_id, request.current_user['user_id'], dca_end_date=None)
+    return jsonify({"resumed": ok}), 200 if ok else 304
 
 
 # ====== 邮件发送 ======
