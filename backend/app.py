@@ -15,7 +15,7 @@ from functools import wraps
 from fund_data import get_fund_nav, get_fund_info, get_fund_manager, search_fund
 from database import init_db, add_holding, get_all_holdings, get_holding, update_holding, delete_holding, get_user_by_email, create_user
 from fund_analysis import calc_indicators, calc_signals, calc_score
-from email_sender import send_report, test_connection as test_smtp
+from email_sender import send_report, test_connection as test_smtp, send_deploy_notification
 from config import CACHE_DIR
 # 默认 JWT_SECRET（生产环境应用环境变量覆盖）
 if not os.environ.get("JWT_SECRET"):
@@ -567,6 +567,8 @@ def deploy_webhook():
         return jsonify({"message": f"跳过非 master 分支"})
 
     project_dir = os.environ.get("PROJECT_DIR", os.path.dirname(BASE_DIR))
+    commit_msg = body.get("head_commit", {}).get("message", "")
+    author_name = body.get("head_commit", {}).get("author", {}).get("name", "")
 
     try:
         result_fetch = subprocess.run(
@@ -574,6 +576,7 @@ def deploy_webhook():
             capture_output=True, text=True, timeout=60
         )
         if result_fetch.returncode != 0:
+            send_deploy_notification(False, commit_msg, author_name, result_fetch.stderr.strip())
             return jsonify({"error": "git fetch 失败", "detail": result_fetch.stderr.strip()}), 500
 
         result_reset = subprocess.run(
@@ -581,12 +584,16 @@ def deploy_webhook():
             capture_output=True, text=True, timeout=30
         )
         if result_reset.returncode != 0:
+            send_deploy_notification(False, commit_msg, author_name, result_reset.stderr.strip())
             return jsonify({"error": "git reset 失败", "detail": result_reset.stderr.strip()}), 500
 
         # 写入触发文件，由宿主机 cron 执行 docker compose up --build
         trigger_file = os.path.join(project_dir, ".deploy-trigger")
         with open(trigger_file, "w") as f:
             f.write(body.get("head_commit", {}).get("message", "webhook"))
+
+        # 发送部署成功通知
+        send_deploy_notification(True, commit_msg, author_name)
 
         return jsonify({
             "success": True,
@@ -596,8 +603,10 @@ def deploy_webhook():
         })
 
     except subprocess.TimeoutExpired:
+        send_deploy_notification(False, commit_msg, author_name, "部署超时")
         return jsonify({"error": "部署超时"}), 500
     except Exception as e:
+        send_deploy_notification(False, commit_msg, author_name, str(e))
         return jsonify({"error": str(e)}), 500
 
 

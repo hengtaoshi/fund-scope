@@ -29,6 +29,7 @@ services:
       - FROM_NAME=${FROM_NAME:-基金驾驶舱}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
       - PROJECT_DIR=/root/fund-cockpit
+      - DEPLOY_NOTIFY_EMAIL=${DEPLOY_NOTIFY_EMAIL}
 
 volumes:
   # SQLite 数据库 + 缓存数据持久化
