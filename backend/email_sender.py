@@ -11,7 +11,7 @@ from email.mime.multipart import MIMEMultipart
 from email.header import Header
 from email.utils import formataddr
 from datetime import datetime
-from config import SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, FROM_NAME
+from config import SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, FROM_NAME, REPLY_TO_EMAIL
 
 
 def _build_html_report(report_data: dict) -> str:
@@ -107,6 +107,8 @@ def send_report(to_email: str, report_data: dict) -> dict:
         sender_addr = EMAIL_FROM or SMTP_USER
         msg["From"] = formataddr((FROM_NAME, sender_addr))
         msg["To"] = to_email
+        if REPLY_TO_EMAIL:
+            msg["Reply-To"] = REPLY_TO_EMAIL
         msg["Subject"] = f"基金驾驶舱 · 加仓建议报告 ({datetime.now().strftime('%Y-%m-%d')})"
 
         html = _build_html_report(report_data)
@@ -178,6 +180,8 @@ def send_deploy_notification(success: bool, commit_message: str = "", author: st
         sender_addr = EMAIL_FROM or SMTP_USER
         msg["From"] = formataddr((FROM_NAME, sender_addr))
         msg["To"] = to_email
+        if REPLY_TO_EMAIL:
+            msg["Reply-To"] = REPLY_TO_EMAIL
         msg["Subject"] = f"基金驾驶舱 · {status_text} ({now[:10]})"
         msg.attach(MIMEText(html, "html", "utf-8"))
 
@@ -303,6 +307,8 @@ def send_daily_report(to_email: str, holdings: list, totals: dict) -> dict:
         sender_addr = EMAIL_FROM or SMTP_USER
         msg["From"] = formataddr((FROM_NAME, sender_addr))
         msg["To"] = to_email
+        if REPLY_TO_EMAIL:
+            msg["Reply-To"] = REPLY_TO_EMAIL
         msg["Subject"] = f"基金驾驶舱 · 每日收益报告 ({datetime.now().strftime('%Y-%m-%d')})"
 
         msg.attach(MIMEText(html, "html", "utf-8"))

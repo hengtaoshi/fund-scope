@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 import jwt
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from config import SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, FROM_NAME
+from config import SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, FROM_NAME, REPLY_TO_EMAIL
 from database import (
     get_user_by_email, create_user,
     save_verification_code, get_latest_code, mark_code_used,
@@ -102,6 +102,8 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
         sender_addr = EMAIL_FROM or SMTP_USER
         msg["From"] = formataddr((FROM_NAME, sender_addr))
         msg["To"] = to_email
+        if REPLY_TO_EMAIL:
+            msg["Reply-To"] = REPLY_TO_EMAIL
 
         if SMTP_PORT == 465:
             server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=10)

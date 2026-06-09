@@ -15,11 +15,13 @@ import threading
 import time
 from datetime import datetime, date
 from functools import wraps
-from fund_data import get_fund_nav, get_fund_info, get_fund_manager, search_fund
+import urllib.request
+import json as json_module
+from fund_data import get_fund_nav, get_fund_info, get_fund_manager, search_fund, screen_funds, get_fund_holdings
 from database import init_db, add_holding, get_all_holdings, get_holding, update_holding, delete_holding, get_user_by_email, create_user
 from fund_analysis import calc_indicators, calc_signals, calc_score
 from email_sender import send_report, test_connection as test_smtp, send_deploy_notification, send_daily_report
-from config import CACHE_DIR, DAILY_REPORT_EMAIL, DAILY_REPORT_TIME
+from config import CACHE_DIR, DAILY_REPORT_EMAIL, DAILY_REPORT_TIME, DEEPSEEK_API_KEY, DEEPSEEK_MODEL
 # 默认 JWT_SECRET（生产环境应用环境变量覆盖）
 if not os.environ.get("JWT_SECRET"):
     os.environ["JWT_SECRET"] = "fund-dashboard-jwt-secret-key-2025"
@@ -763,6 +765,211 @@ def start_scheduler():
         return
     t = threading.Thread(target=_daily_report_scheduler, daemon=True)
     t.start()
+
+
+# ====== 市场指数 ======
+
+
+# ====== 基金筛选 ======
+
+
+@app.route("/api/funds/screen")
+def fund_screen():
+    """基金筛选与排行"""
+    fund_type = request.args.get("type")
+    sort_by = request.args.get("sort_by", "近1年")
+    order = request.args.get("order", "desc")
+    page = int(request.args.get("page", 1))
+    page_size = int(request.args.get("page_size", 20))
+    keyword = request.args.get("keyword", "")
+    try:
+        data = screen_funds(
+            fund_type=fund_type, sort_by=sort_by, order=order,
+            page=page, page_size=page_size, keyword=keyword
+        )
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"total": 0, "page": page, "page_size": page_size, "funds": [], "error": str(e)[:200]})
+
+
+# ====== 持仓穿透分析 ======
+
+
+@app.route("/api/portfolio/penetration")
+@login_required
+def portfolio_penetration():
+    """持仓穿透：按基金类型分布"""
+    holdings = get_all_holdings(request.current_user['user_id'])
+    if not holdings:
+        return jsonify({"type_distribution": [], "fund_details": [], "total_value": 0, "total_count": 0})
+
+    fund_details = []
+    type_values = {}
+    total_value = 0
+
+    for h in holdings:
+        nav_df = get_fund_nav(h["code"])
+        current_nav = float(nav_df["单位净值"].iloc[-1]) if not nav_df.empty else 0
+        value = round(h["shares"] * current_nav, 2)
+        total_value += value
+
+        info = get_fund_info(h["code"])
+        fund_type = info.get("fund_type", "未知") if info else "未知"
+
+        fund_details.append({
+            "code": h["code"],
+            "name": h["name"],
+            "type": fund_type,
+            "value": value,
+            "proportion": 0,
+        })
+
+        if fund_type not in type_values:
+            type_values[fund_type] = {"count": 0, "total_value": 0}
+        type_values[fund_type]["count"] += 1
+        type_values[fund_type]["total_value"] += value
+
+    for fd in fund_details:
+        fd["proportion"] = round(fd["value"] / total_value * 100, 2) if total_value > 0 else 0
+
+    type_distribution = [
+        {
+            "type": ft,
+            "count": data["count"],
+            "total_value": round(data["total_value"], 2),
+            "proportion": round(data["total_value"] / total_value * 100, 2) if total_value > 0 else 0,
+        }
+        for ft, data in type_values.items()
+    ]
+    type_distribution.sort(key=lambda x: x["proportion"], reverse=True)
+
+    return jsonify({
+        "type_distribution": type_distribution,
+        "fund_details": fund_details,
+        "total_value": round(total_value, 2),
+        "total_count": len(holdings),
+    })
+
+
+# ====== 定投测算 ======
+
+
+@app.route("/api/dca/project", methods=["POST"])
+def dca_project():
+    """定投收益测算"""
+    data = request.get_json(force=True)
+    fund_code = data.get("fund_code", "")
+    monthly_amount = float(data.get("monthly_amount", 0))
+    months = int(data.get("months", 0))
+    expected_return = float(data.get("expected_annual_return", 8))
+
+    if not fund_code or monthly_amount <= 0 or months <= 0:
+        return jsonify({"error": "参数无效"}), 400
+
+    monthly_rate = expected_return / 12 / 100
+    total_principal = round(monthly_amount * months, 2)
+
+    if monthly_rate > 0:
+        estimated_total = round(monthly_amount * ((1 + monthly_rate) ** months - 1) / monthly_rate, 2)
+    else:
+        estimated_total = total_principal
+
+    estimated_profit = round(estimated_total - total_principal, 2)
+
+    schedule = []
+    for i in range(1, min(months, 12) + 1):
+        accumulated_principal = round(monthly_amount * i, 2)
+        if monthly_rate > 0:
+            accumulated_total = round(monthly_amount * ((1 + monthly_rate) ** i - 1) / monthly_rate, 2)
+        else:
+            accumulated_total = accumulated_principal
+        schedule.append({
+            "month": i,
+            "contribution": monthly_amount,
+            "accumulated_principal": accumulated_principal,
+            "accumulated_total": accumulated_total,
+        })
+
+    return jsonify({
+        "monthly_amount": monthly_amount,
+        "months": months,
+        "expected_return_pct": expected_return,
+        "total_principal": total_principal,
+        "estimated_total": estimated_total,
+        "estimated_profit": estimated_profit,
+        "schedule": schedule,
+    })
+
+
+# ====== AI 对话 ======
+
+
+@app.route("/api/ai/chat", methods=["POST"])
+@login_required
+def ai_chat():
+    """AI 基金助手"""
+    data = request.get_json(force=True)
+    message = (data.get("message") or "").strip()
+
+    if not DEEPSEEK_API_KEY:
+        return jsonify({"error": "请先配置 DeepSeek API Key"}), 400
+
+    if not message:
+        return jsonify({"error": "请输入消息"}), 400
+
+    # 构建持仓上下文
+    holdings = get_all_holdings(request.current_user['user_id'])
+    portfolio_lines = []
+    total_value = 0
+
+    for h in holdings:
+        nav_df = get_fund_nav(h["code"])
+        current_nav = float(nav_df["单位净值"].iloc[-1]) if not nav_df.empty else 0
+        value = round(h["shares"] * current_nav, 2)
+        total_value += value
+        cost_total = round(h["shares"] * h["cost_nav"], 2)
+        profit = round(value - cost_total, 2)
+
+        portfolio_lines.append(
+            f"- {h['name']}({h['code']}): 份额{h['shares']}, 当前净值{current_nav}, "
+            f"市值{value}, 成本{cost_total}, 收益{profit}"
+        )
+
+    portfolio_context = "\n".join(portfolio_lines) if portfolio_lines else "暂无持仓数据"
+
+    system_prompt = (
+        "你是一个专业的基金投资助手，帮助用户分析基金持仓。当前用户持仓信息如下：\n"
+        f"{portfolio_context}\n"
+        f"总市值: {round(total_value, 2)}\n"
+        "请基于以上数据回答用户的问题。回答要简洁、专业、有数据支撑。"
+    )
+
+    # 调用 DeepSeek API
+    url = "https://api.deepseek.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    body = json_module.dumps({
+        "model": DEEPSEEK_MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": message},
+        ],
+        "temperature": 0.7,
+        "max_tokens": 2000,
+    }).encode("utf-8")
+
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json_module.loads(resp.read().decode("utf-8"))
+            reply = result["choices"][0]["message"]["content"]
+            return jsonify({"reply": reply})
+    except Exception as e:
+        print(f"[ERROR] DeepSeek API 调用失败: {e}")
+        return jsonify({"error": "AI 服务调用失败，请稍后重试"}), 502
 
 
 if __name__ == "__main__":

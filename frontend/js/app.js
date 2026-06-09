@@ -117,7 +117,11 @@ const pageTitles = {
     portfolio: ['持仓', '全部持仓一览'],
     analysis: ['分析', '基金深度分析'],
     predict: ['智能预测', '多因子评分模型 · 买卖时机参考'],
+    screener: ['基金筛选', '多维度筛选优质基金'],
+    penetration: ['组合穿透', '风格分析与行业分布'],
+    dca: ['定投规划', '智能定投模拟计算'],
     tools: ['工具', '定投计算器'],
+    ai: ['AI 助手', '智能持仓问答'],
     settings: ['设置', '系统设置'],
 };
 
@@ -225,7 +229,11 @@ async function renderPage(page) {
         portfolio: renderPortfolio,
         analysis: renderAnalysis,
         predict: renderPredict,
+        screener: renderScreener,
+        penetration: renderPenetration,
+        dca: renderDca,
         tools: renderTools,
+        ai: renderAI,
         settings: renderSettings,
     };
     content.innerHTML = '<div class="loading"><div class="spinner"></div>加载中...</div>';
@@ -1012,6 +1020,402 @@ function renderSettings(el) {
             声明: 仅供参考，不构成投资建议
         </div>
     </div>`;
+}
+
+// ====== 基金筛选 ======
+async function renderScreener(el) {
+    el.innerHTML = `
+        <div class="filter-bar" id="screenerBar">
+            <div class="form-group">
+                <label>基金类型</label>
+                <select id="screenerType" onchange="searchScreener(1)">
+                    <option value="全部">全部</option>
+                    <option value="股票型">股票型</option>
+                    <option value="混合型">混合型</option>
+                    <option value="债券型">债券型</option>
+                    <option value="指数型">指数型</option>
+                    <option value="货币型">货币型</option>
+                    <option value="QDII">QDII</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>排序</label>
+                <select id="screenerSort" onchange="searchScreener(1)">
+                    <option value="近1月">近1月</option>
+                    <option value="近3月">近3月</option>
+                    <option value="近6月">近6月</option>
+                    <option value="近1年">近1年</option>
+                    <option value="近3年">近3年</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>搜索</label>
+                <input id="screenerKeyword" placeholder="基金代码/名称" onkeydown="if(event.key==='Enter') searchScreener(1)" />
+            </div>
+            <button class="btn btn-primary" onclick="searchScreener(1)"><i class="fas fa-search"></i> 搜索</button>
+        </div>
+        <div id="screenerResults"><div class="loading"><div class="spinner"></div></div></div>`;
+
+    await searchScreener(1);
+}
+
+async function searchScreener(page) {
+    const el = $('screenerResults');
+    if (!el) return;
+    el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+        const type = ($('screenerType') || {}).value || '全部';
+        const sortBy = ($('screenerSort') || {}).value || '近1月';
+        const keyword = ($('screenerKeyword') || {}).value || '';
+        const order = 'desc';
+
+        const data = await api(`/api/funds/screen?type=${encodeURIComponent(type)}&sort_by=${encodeURIComponent(sortBy)}&order=${order}&keyword=${encodeURIComponent(keyword)}&page=${page}&page_size=30`);
+
+        if (!data || !data.funds || data.funds.length === 0) {
+            el.innerHTML = '<div class="empty"><i class="fas fa-filter"></i><p>没有找到匹配的基金</p></div>';
+            return;
+        }
+
+        const funds = data.funds;
+        const total = data.total || funds.length;
+        const totalPages = data.total_pages || Math.ceil(total / 30);
+        const currentPage = data.page || page;
+
+        el.innerHTML = `
+            <div class="table-wrap">
+            <table>
+                <thead><tr>
+                    <th>代码</th><th>名称</th><th>类型</th><th>净值</th>
+                    <th>近1月</th><th>近3月</th><th>近6月</th><th>近1年</th><th></th>
+                </tr></thead>
+                <tbody>${funds.map(f => `
+                    <tr>
+                        <td>${esc(f.code)}</td>
+                        <td><strong>${esc(f.name || '--')}</strong></td>
+                        <td>${esc(f.fund_type || '--')}</td>
+                        <td>${f.nav != null ? f.nav.toFixed(4) : '--'}</td>
+                        <td><span class="${cls(f.return_1m)}">${f.return_1m != null ? fmtPct(f.return_1m) : '--'}</span></td>
+                        <td><span class="${cls(f.return_3m)}">${f.return_3m != null ? fmtPct(f.return_3m) : '--'}</span></td>
+                        <td><span class="${cls(f.return_6m)}">${f.return_6m != null ? fmtPct(f.return_6m) : '--'}</span></td>
+                        <td><span class="${cls(f.return_1y)}">${f.return_1y != null ? fmtPct(f.return_1y) : '--'}</span></td>
+                        <td><button class="btn btn-outline btn-sm" onclick="goAnalysis('${esc(f.code)}')">分析</button></td>
+                    </tr>`).join('')}</tbody>
+            </table>
+            </div>
+            <div class="pagination">
+                <button class="page-btn" onclick="searchScreener(${currentPage - 1})" ${currentPage <= 1 ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : ''}>上一页</button>
+                <span class="page-info">第 ${currentPage} / ${totalPages} 页 · 共 ${total} 条</span>
+                <button class="page-btn" onclick="searchScreener(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : ''}>下一页</button>
+            </div>`;
+    } catch (e) {
+        if (e.name === 'AbortError') return;
+        el.innerHTML = '<div class="empty"><i class="fas fa-exclamation-triangle"></i><p>加载失败</p></div>';
+    }
+}
+
+// ====== 市场温度 ======
+
+// ====== 组合穿透 ======
+async function renderPenetration(el) {
+    el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+        const data = await api('/api/portfolio/penetration');
+        if (!data) {
+            el.innerHTML = '<div class="empty"><i class="fas fa-crosshairs"></i><p>暂无持仓数据，请先在「持仓」页面添加基金</p></div>';
+            return;
+        }
+
+        const totalValue = data.total_value || 0;
+        const fundCount = data.fund_count || 0;
+        const typeDist = data.type_distribution || [];
+        const fundDetails = data.fund_details || [];
+
+        let html = `
+            <div class="stats" style="grid-template-columns:repeat(2,1fr);">
+                <div class="card stat-card"><div class="stat-label">组合总资产</div><div class="stat-value">${fmtMoney(totalValue)}</div></div>
+                <div class="card stat-card"><div class="stat-label">基金数量</div><div class="stat-value">${fundCount}</div></div>
+            </div>`;
+
+        if (typeDist.length > 0) {
+            html += `
+            <div class="penetration-grid">
+                <div class="card">
+                    <div class="card-title"><i class="fas fa-chart-bar"></i> 类型分布</div>
+                    <div class="penetration-chart"><canvas id="penetrationChart"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-title"><i class="fas fa-list"></i> 分布明细</div>
+                    <table>
+                        <thead><tr><th>类型</th><th>数量</th><th>总市值</th><th>占比</th></tr></thead>
+                        <tbody>${typeDist.map(t => `
+                            <tr>
+                                <td>${esc(t.type || '--')}</td>
+                                <td>${t.count || 0}</td>
+                                <td>${fmtMoney(t.total_value || 0)}</td>
+                                <td>${t.proportion != null ? t.proportion.toFixed(1) + '%' : '--'}</td>
+                            </tr>`).join('')}</tbody>
+                    </table>
+                </div>
+            </div>`;
+        }
+
+        if (fundDetails.length > 0) {
+            html += `
+            <div class="card penetration-table">
+                <div class="card-title"><i class="fas fa-list"></i> 持仓明细</div>
+                <div class="table-wrap">
+                <table>
+                    <thead><tr><th>代码</th><th>名称</th><th>类型</th><th>市值</th><th>占比</th></tr></thead>
+                    <tbody>${fundDetails.map(f => `
+                        <tr>
+                            <td>${esc(f.code || '--')}</td>
+                            <td><strong>${esc(f.name || '--')}</strong></td>
+                            <td>${esc(f.fund_type || '--')}</td>
+                            <td>${fmtMoney(f.value || 0)}</td>
+                            <td>${f.proportion != null ? f.proportion.toFixed(1) + '%' : '--'}</td>
+                        </tr>`).join('')}</tbody>
+                </table>
+                </div>
+            </div>`;
+        }
+
+        if (typeDist.length === 0 && fundDetails.length === 0) {
+            html += '<div class="empty"><i class="fas fa-crosshairs"></i><p>暂无组合穿透数据</p></div>';
+        }
+
+        el.innerHTML = html;
+
+        if (typeDist.length > 0 && typeof Chart !== 'undefined') {
+            setTimeout(() => {
+                const canvas = $('penetrationChart');
+                if (!canvas) return;
+                if (chartInstances.penetration) {
+                    try { chartInstances.penetration.destroy(); } catch (e) { /* ignore */ }
+                }
+                chartInstances.penetration = new Chart(canvas, {
+                    type: 'bar',
+                    data: {
+                        labels: typeDist.map(t => t.type),
+                        datasets: [{
+                            label: '市值',
+                            data: typeDist.map(t => t.total_value),
+                            backgroundColor: genColors(typeDist.length),
+                            borderWidth: 0,
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'y',
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: '#2d2a26',
+                                bodyFont: { size: 13 },
+                                padding: 10,
+                                callbacks: {
+                                    label: ctx => ctx.parsed.x !== null ? fmtMoney(ctx.parsed.x) : ''
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: { color: '#f0ebe2' },
+                                ticks: { font: { size: 11 }, color: '#8a847a', callback: function(v) {
+                                    if (v >= 10000) return (v / 10000).toFixed(1) + '万';
+                                    return v;
+                                } }
+                            },
+                            y: { grid: { display: false }, ticks: { font: { size: 12 }, color: '#5a544a' } }
+                        }
+                    }
+                });
+            }, 50);
+        }
+    } catch (e) {
+        if (e.name === 'AbortError') throw e;
+        el.innerHTML = '<div class="empty"><i class="fas fa-exclamation-triangle"></i><p>加载失败</p></div>';
+    }
+}
+
+// ====== 定投规划 ======
+async function renderDca(el) {
+    el.innerHTML = `
+        <div class="card dca-form">
+            <div class="card-title"><i class="fas fa-calendar-alt"></i> 定投参数设置</div>
+            <div class="form-group"><label>基金代码</label><input id="dcaFundCode" placeholder="如 005827" /></div>
+            <div class="form-row">
+                <div class="form-group"><label>每月定投金额（元）</label><input id="dcaMonthlyAmount" type="number" value="1000" min="1" /></div>
+                <div class="form-group"><label>定投月数</label><input id="dcaMonths" type="number" value="12" min="1" /></div>
+            </div>
+            <div class="form-group"><label>预期年化收益率（%）</label><input id="dcaExpectedRate" type="number" value="8" step="0.5" min="0" /></div>
+            <div style="display:flex;gap:10px;">
+                <button class="btn btn-primary" onclick="calculateDcaPlan()"><i class="fas fa-calculator"></i> 计算</button>
+                <button class="btn btn-outline" onclick="resetDcaForm()"><i class="fas fa-undo"></i> 重置</button>
+            </div>
+        </div>
+        <div id="dcaResultContainer" style="display:none;"></div>`;
+}
+
+async function calculateDcaPlan() {
+    const fundCode = $('dcaFundCode').value.trim();
+    const monthlyAmount = parseFloat($('dcaMonthlyAmount').value);
+    const months = parseInt($('dcaMonths').value);
+    const expectedRate = parseFloat($('dcaExpectedRate').value);
+
+    if (!fundCode) { showToast('请输入基金代码'); return; }
+    if (!monthlyAmount || !months) { showToast('请填写完整信息'); return; }
+
+    const el = $('dcaResultContainer');
+    el.style.display = 'block';
+    el.innerHTML = '<div class="loading"><div class="spinner"></div>计算中...</div>';
+
+    try {
+        const res = await api('/api/dca/project', {
+            method: 'POST',
+            body: JSON.stringify({
+                fund_code: fundCode,
+                monthly_amount: monthlyAmount,
+                months: months,
+                expected_annual_return: expectedRate
+            })
+        });
+
+        if (!res) {
+            el.innerHTML = '<div class="empty"><i class="fas fa-exclamation-triangle"></i><p>计算失败，请稍后重试</p></div>';
+            return;
+        }
+
+        const totalPrincipal = res.total_principal || (monthlyAmount * months);
+        const totalValue = res.total_value || 0;
+        const totalProfit = res.total_profit || (totalValue - totalPrincipal);
+        const schedule = res.schedule || [];
+
+        el.innerHTML = `
+            <div class="card dca-result">
+                <div class="card-title"><i class="fas fa-chart-line"></i> 定投概览</div>
+                <div class="dca-stats">
+                    <div class="dca-stat"><div class="dca-value">${fmtMoney(monthlyAmount)}</div><div class="dca-label">每月投入</div></div>
+                    <div class="dca-stat"><div class="dca-value">${months} 个月</div><div class="dca-label">定投时长</div></div>
+                    <div class="dca-stat"><div class="dca-value">${expectedRate}%</div><div class="dca-label">预期年化</div></div>
+                    <div class="dca-stat"><div class="dca-value">${fmtMoney(totalPrincipal)}</div><div class="dca-label">累计本金</div></div>
+                    <div class="dca-stat"><div class="dca-value" style="color:${totalProfit >= 0 ? '#c62828' : '#2e7d32'};">${fmtMoney(totalProfit)}</div><div class="dca-label">预计收益</div></div>
+                    <div class="dca-stat"><div class="dca-value">${fmtMoney(totalValue)}</div><div class="dca-label">预计总值</div></div>
+                </div>
+                ${schedule.length > 0 ? `
+                <div class="table-wrap" style="max-height:400px;overflow-y:auto;">
+                    <table>
+                        <thead><tr><th>月份</th><th>投入金额</th><th>累计投入</th><th>累计总值</th><th>收益</th></tr></thead>
+                        <tbody>${schedule.map(s => {
+                            const profit = s.profit || 0;
+                            return `<tr>
+                                <td>${s.month || '--'}</td>
+                                <td>${fmtMoney(s.investment || 0)}</td>
+                                <td>${fmtMoney(s.cumulative_investment || 0)}</td>
+                                <td class="${cls(profit)}">${fmtMoney(s.cumulative_value || 0)}</td>
+                                <td class="${cls(profit)}">${fmtMoney(profit)}</td>
+                            </tr>`;
+                        }).join('')}</tbody>
+                    </table>
+                </div>` : ''}
+            </div>`;
+    } catch (e) {
+        if (e.name === 'AbortError') return;
+        el.innerHTML = '<div class="empty"><i class="fas fa-exclamation-triangle"></i><p>计算失败</p></div>';
+    }
+}
+
+function resetDcaForm() {
+    const fc = $('dcaFundCode'); if (fc) fc.value = '';
+    const ma = $('dcaMonthlyAmount'); if (ma) ma.value = '1000';
+    const mo = $('dcaMonths'); if (mo) mo.value = '12';
+    const er = $('dcaExpectedRate'); if (er) er.value = '8';
+    const el = $('dcaResultContainer');
+    if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+}
+
+// ====== AI 助手 ======
+let _aiMessages = [];
+
+async function renderAI(el) {
+    el.innerHTML = `
+        <div class="chat-suggestions" id="aiSuggestions">
+            <span class="chip" onclick="suggestQuestion('我的持仓整体怎么样?')">我的持仓整体怎么样?</span>
+            <span class="chip" onclick="suggestQuestion('今天哪只基金表现最好?')">今天哪只基金表现最好?</span>
+            <span class="chip" onclick="suggestQuestion('我的组合风险高吗?')">我的组合风险高吗?</span>
+        </div>
+        <div class="chat-container">
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input-bar">
+                <input id="chatInput" placeholder="输入您的问题..." onkeydown="if(event.key==='Enter') sendChatMessage()" />
+                <button onclick="sendChatMessage()"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>`;
+    renderChatMessages();
+}
+
+function renderChatMessages() {
+    const el = $('chatMessages');
+    if (!el) return;
+    if (_aiMessages.length === 0) {
+        el.innerHTML = '<div class="empty" style="padding:30px 20px;"><i class="fas fa-robot"></i><p>有什么可以帮您的？点击上方建议问题开始对话</p></div>';
+        return;
+    }
+    el.innerHTML = _aiMessages.map((m, i) => {
+        const timeStr = m.time || new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        return `<div class="chat-msg ${m.role}">
+            <div class="bubble">${esc(m.content)}</div>
+            <div class="time">${timeStr}</div>
+        </div>`;
+    }).join('');
+    el.scrollTop = el.scrollHeight;
+}
+
+async function sendChatMessage() {
+    const input = $('chatInput');
+    const msg = input ? input.value.trim() : '';
+    if (!msg) return;
+    if (input) input.value = '';
+
+    _aiMessages.push({ role: 'user', content: msg, time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) });
+    renderChatMessages();
+
+    const el = $('chatMessages');
+    if (el) {
+        const ld = document.createElement('div');
+        ld.className = 'chat-loading';
+        ld.id = 'chatLoading';
+        ld.innerHTML = '<div class="spinner" style="width:18px;height:18px;margin:0 auto 8px;"></div><span>思考中...</span>';
+        el.appendChild(ld);
+        el.scrollTop = el.scrollHeight;
+    }
+
+    try {
+        const res = await api('/api/ai/chat', {
+            method: 'POST',
+            body: JSON.stringify({ message: msg })
+        });
+
+        const loadingEl = $('chatLoading');
+        if (loadingEl) loadingEl.remove();
+
+        const reply = (res && res.reply) ? res.reply : (res && res.message ? res.message : '抱歉，我没有理解您的问题，请重新描述。');
+        _aiMessages.push({ role: 'ai', content: reply, time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) });
+        renderChatMessages();
+    } catch (e) {
+        if (e.name === 'AbortError') return;
+        const loadingEl = $('chatLoading');
+        if (loadingEl) loadingEl.remove();
+        _aiMessages.push({ role: 'ai', content: '请求失败，请稍后重试。', time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) });
+        renderChatMessages();
+    }
+}
+
+function suggestQuestion(q) {
+    const input = $('chatInput');
+    if (input) input.value = q;
+    sendChatMessage();
 }
 
 async function clearCache() {

@@ -22,12 +22,16 @@
     <a class="nav-item" data-page="portfolio"><i class="fas fa-briefcase"></i> 持仓</a>
     <a class="nav-item" data-page="analysis"><i class="fas fa-search"></i> 分析</a>
     <a class="nav-item" data-page="predict"><i class="fas fa-brain"></i> 智能预测</a>
+    <a class="nav-item" data-page="screener"><i class="fas fa-filter"></i> 基金筛选</a>
+    <a class="nav-item" data-page="penetration"><i class="fas fa-crosshairs"></i> 组合穿透</a>
+    <a class="nav-item" data-page="dca"><i class="fas fa-calendar-alt"></i> 定投规划</a>
     <a class="nav-item" data-page="tools"><i class="fas fa-calculator"></i> 工具</a>
+    <a class="nav-item" data-page="ai"><i class="fas fa-robot"></i> AI 助手</a>
     <a class="nav-item" data-page="settings"><i class="fas fa-cog"></i> 设置</a>
   </nav>
-  <div class="sidebar-footer" style="padding:12px 20px;border-top:1px solid #e8e0d4;">
-    <div id="sidebarFooter" style="font-size:12px;color:#b5aea0;margin-bottom:8px;">数据加载中...</div>
-    <a onclick="logout()" style="cursor:pointer;font-size:12px;color:#b5aea0;display:flex;align-items:center;gap:6px;transition:color 0.2s;" onmouseover="this.style.color='#b91c1c'" onmouseout="this.style.color='#b5aea0'"><i class="fas fa-sign-out-alt"></i> 退出登录</a>
+  <div class="sidebar-footer">
+    <div id="sidebarFooter">数据加载中...</div>
+    <a onclick="logout()" class="logout-link"><i class="fas fa-sign-out-alt"></i> 退出登录</a>
   </div>
 </aside>
 <main class="main">
@@ -38,7 +42,7 @@
       <span class="subtitle" id="pageSubtitle">今日数据 · 实时估算</span>
     </div>
     <div style="display:flex;align-items:center;gap:12px;">
-      <span style="font-size:12px;color:#99948b;"><i class="fas fa-clock"></i> 最后更新 <span id="lastRefreshTime">--:--</span></span>
+      <span class="topbar-time"><i class="fas fa-clock"></i> 最后更新 <span id="lastRefreshTime">--:--</span></span>
       <button class="btn btn-primary" onclick="clearCache()"><i class="fas fa-sync-alt"></i> 刷新数据</button></div>
   </header>
   <div class="content" id="content"></div>

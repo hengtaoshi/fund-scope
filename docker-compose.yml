@@ -19,6 +19,7 @@ services:
       - /usr/bin/docker:/usr/local/bin/docker:ro
       - /usr/libexec/docker/cli-plugins:/usr/local/lib/docker/cli-plugins:ro
     environment:
+      - TZ=Asia/Shanghai
       - PORT=5000
       - JWT_SECRET=${JWT_SECRET}
       - SMTP_SERVER=${SMTP_SERVER:-smtp.qq.com}
@@ -27,6 +28,8 @@ services:
       - SMTP_PASS=${SMTP_PASS}
       - EMAIL_FROM=${EMAIL_FROM}
       - FROM_NAME=${FROM_NAME:-基金驾驶舱}
+      - REPLY_TO_EMAIL=${REPLY_TO_EMAIL}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - DAILY_REPORT_EMAIL=${DAILY_REPORT_EMAIL}
       - DAILY_REPORT_TIME=${DAILY_REPORT_TIME:-20:00}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}

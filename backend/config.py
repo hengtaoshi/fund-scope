@@ -10,6 +10,11 @@ SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "")
 FROM_NAME = os.getenv("FROM_NAME", "基金驾驶舱")  # 发件人显示名称，隐藏个人邮箱
+REPLY_TO_EMAIL = os.getenv("REPLY_TO_EMAIL", "")  # 回复邮箱
+
+# DeepSeek
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
 # 每日收益报告
 DAILY_REPORT_EMAIL = os.getenv("DAILY_REPORT_EMAIL", "")
