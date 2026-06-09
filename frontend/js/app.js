@@ -1288,8 +1288,8 @@ async function calculateDcaPlan() {
         }
 
         const totalPrincipal = res.total_principal || (monthlyAmount * months);
-        const totalValue = res.total_value || 0;
-        const totalProfit = res.total_profit || (totalValue - totalPrincipal);
+        const totalValue = res.estimated_total || 0;
+        const totalProfit = res.estimated_profit || (totalValue - totalPrincipal);
         const schedule = res.schedule || [];
 
         el.innerHTML = `
@@ -1308,12 +1308,12 @@ async function calculateDcaPlan() {
                     <table>
                         <thead><tr><th>月份</th><th>投入金额</th><th>累计投入</th><th>累计总值</th><th>收益</th></tr></thead>
                         <tbody>${schedule.map(s => {
-                            const profit = s.profit || 0;
+                            const profit = s.accumulated_total - s.accumulated_principal;
                             return `<tr>
                                 <td>${s.month || '--'}</td>
-                                <td>${fmtMoney(s.investment || 0)}</td>
-                                <td>${fmtMoney(s.cumulative_investment || 0)}</td>
-                                <td class="${cls(profit)}">${fmtMoney(s.cumulative_value || 0)}</td>
+                                <td>${fmtMoney(s.contribution || 0)}</td>
+                                <td>${fmtMoney(s.accumulated_principal || 0)}</td>
+                                <td class="${cls(profit)}">${fmtMoney(s.accumulated_total || 0)}</td>
                                 <td class="${cls(profit)}">${fmtMoney(profit)}</td>
                             </tr>`;
                         }).join('')}</tbody>
