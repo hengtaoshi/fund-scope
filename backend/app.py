@@ -620,14 +620,14 @@ def serve_webfonts(filename):
     return send_from_directory(os.path.join(FRONTEND_DIR, "webfonts"), filename)
 
 
-# ====== Gitee Webhook 自动部署 ======
+# ====== Webhook 自动部署（Gitee / GitHub 通用）======
 
 
 @app.route("/api/deploy", methods=["POST"])
 def deploy_webhook():
-    """接收 Gitee Webhook，自动 git pull + docker compose up -d --build"""
+    """接收 Git Webhook，自动 git pull + docker compose up -d --build"""
     expected = os.environ.get("WEBHOOK_SECRET", "")
-    actual = request.headers.get("X-Gitee-Token", "")
+    actual = request.headers.get("X-Gitee-Token", request.headers.get("X-Hub-Signature-256", ""))
     if not expected or not actual or actual != expected:
         return jsonify({"error": "未授权"}), 403
 

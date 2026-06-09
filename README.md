@@ -111,9 +111,7 @@
 
 ### Prerequisites
 
-- Docker & Docker Compose
-- 一个 DeepSeek API Key（[申请](https://platform.deepseek.com/)）
-- （可选）一个 SMTP 邮箱账号用于邮件功能
+- Docker & Docker Compose（[安装指南](https://docs.docker.com/compose/install/)）
 
 ### 1. 克隆仓库
 
@@ -122,23 +120,22 @@ git clone https://github.com/Shihengtao2324/fund-scope.git
 cd fund-scope
 ```
 
-### 2. 配置环境变量
+### 2. 配置环境变量（必须）
+
+项目通过 `.env` 文件读取所有敏感配置。**你需要复制模板并填入自己的密钥：**
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env` 填入你的配置（至少需要 `JWT_SECRET`）：
+然后**打开 `.env` 文件**，至少修改以下两项：
 
-```ini
-JWT_SECRET=<生成一个随机密钥>
-DEEPSEEK_API_KEY=sk-your-deepseek-api-key
-```
+| 变量 | 必须 | 说明 |
+|------|------|------|
+| `JWT_SECRET` | **是** | 密钥，用于加密登录令牌。运行 `python3 -c "import secrets; print(secrets.token_hex(32))"` 生成 |
+| `DEEPSEEK_API_KEY` | 否 | DeepSeek API 密钥，[点此申请](https://platform.deepseek.com/)（AI 问答需要） |
 
-生成 JWT 密钥：
-```bash
-python3 -c "import secrets; print(secrets.token_hex(32))"
-```
+> ⚠️ **注意**：`.env` 文件包含你的敏感信息，已被 `.gitignore` 排除，**不会**提交到 Git。
 
 ### 3. 启动
 
@@ -150,9 +147,30 @@ docker compose up -d --build
 
 > 首次启动会自动创建数据库表，无需手动初始化。
 
+---
+
+### 你需要修改的文件
+
+首次使用只需关注以下 **2 个文件**：
+
+#### 📄 `.env` — 配置你自己的密钥
+所有密码、API Key 都写在这里。模板 `.env.example` 已注释了每个字段的用途。
+
+| 配置项 | 怎么填 |
+|--------|--------|
+| `JWT_SECRET` | 运行 `python3 -c "import secrets; print(secrets.token_hex(32))"`，粘贴结果 |
+| `SMTP_USER` / `SMTP_PASS` | 你的邮箱和 SMTP 授权码（非登录密码） |
+| `DEEPSEEK_API_KEY` | DeepSeek 平台的 API Key |
+
+#### 🐳 `docker-compose.yml` — 按需修改
+- **国内用户**：Dockerfile 已配置 USTC / 清华镜像加速，开箱即用
+- **海外用户**：如果构建慢，可以删除 Dockerfile 中 `sed -i` 和 `pip install -i` 的国内镜像源
+
+---
+
 ## Configuration
 
-所有配置通过环境变量注入，参见 [`.env.example`](.env.example)：
+所有配置通过环境变量注入，详见 [`.env.example`](.env.example)。
 
 | 变量 | 必填 | 说明 |
 |------|------|------|
