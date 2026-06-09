@@ -1375,9 +1375,11 @@ let _aiMessages = [];
 async function renderAI(el) {
     el.innerHTML = `
         <div class="chat-suggestions" id="aiSuggestions">
-            <span class="chip" onclick="suggestQuestion('我的持仓整体怎么样?')">我的持仓整体怎么样?</span>
-            <span class="chip" onclick="suggestQuestion('今天哪只基金表现最好?')">今天哪只基金表现最好?</span>
-            <span class="chip" onclick="suggestQuestion('我的组合风险高吗?')">我的组合风险高吗?</span>
+            <span class="chip" onclick="suggestQuestion('我的持仓整体怎么样?')">持仓诊断</span>
+            <span class="chip" onclick="suggestQuestion('分析我的组合风险和收益特征')">风险收益分析</span>
+            <span class="chip" onclick="suggestQuestion('哪只基金表现最好，哪只最差？给出对比')">持仓对比</span>
+            <span class="chip" onclick="suggestQuestion('我的组合分散度如何？有什么调整建议？')">调仓建议</span>
+            <span class="chip" onclick="suggestQuestion('分析各基金的技术面信号（RSI/MACD/均线）')">技术面分析</span>
         </div>
         <div class="chat-container">
             <div class="chat-messages" id="chatMessages"></div>
@@ -1428,7 +1430,10 @@ async function sendChatMessage() {
     try {
         const res = await api('/api/ai/chat', {
             method: 'POST',
-            body: JSON.stringify({ message: msg })
+            body: JSON.stringify({
+                message: msg,
+                history: _aiMessages.map(m => ({ role: m.role, content: m.content }))
+            })
         });
 
         const loadingEl = $('chatLoading');

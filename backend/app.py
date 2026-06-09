@@ -903,13 +903,17 @@ def dca_project():
 
 # ====== AI 对话 ======
 
+# 导入分析引擎
+from fund_analysis import calc_indicators, calc_signals, calc_score
+
 
 @app.route("/api/ai/chat", methods=["POST"])
 @login_required
 def ai_chat():
-    """AI 基金助手"""
+    """专业 AI 基金分析助手"""
     data = request.get_json(force=True)
     message = (data.get("message") or "").strip()
+    history = data.get("history", [])
 
     if not DEEPSEEK_API_KEY:
         return jsonify({"error": "请先配置 DeepSeek API Key"}), 400
@@ -917,32 +921,207 @@ def ai_chat():
     if not message:
         return jsonify({"error": "请输入消息"}), 400
 
-    # 构建持仓上下文
-    holdings = get_all_holdings(request.current_user['user_id'])
-    portfolio_lines = []
+    user_id = request.current_user['user_id']
+    holdings = get_all_holdings(user_id)
+
+    # ====== 构建持仓分析数据 ======
+    fund_details = []
+    portfolio_items = []
     total_value = 0
+    total_cost = 0
 
     for h in holdings:
         nav_df = get_fund_nav(h["code"])
-        current_nav = float(nav_df["单位净值"].iloc[-1]) if not nav_df.empty else 0
+        if nav_df.empty:
+            continue
+
+        current_nav = float(nav_df["单位净值"].iloc[-1])
         value = round(h["shares"] * current_nav, 2)
-        total_value += value
         cost_total = round(h["shares"] * h["cost_nav"], 2)
         profit = round(value - cost_total, 2)
+        profit_pct = round(profit / cost_total * 100, 2) if cost_total > 0 else 0
+        total_value += value
+        total_cost += cost_total
 
-        portfolio_lines.append(
-            f"- {h['name']}({h['code']}): 份额{h['shares']}, 当前净值{current_nav}, "
-            f"市值{value}, 成本{cost_total}, 收益{profit}"
-        )
+        # 基金信息
+        info = get_fund_info(h["code"])
 
-    portfolio_context = "\n".join(portfolio_lines) if portfolio_lines else "暂无持仓数据"
+        # 经理信息
+        managers = get_fund_manager(h["code"])
 
-    system_prompt = (
-        "你是一个专业的基金投资助手，帮助用户分析基金持仓。当前用户持仓信息如下：\n"
-        f"{portfolio_context}\n"
-        f"总市值: {round(total_value, 2)}\n"
-        "请基于以上数据回答用户的问题。回答要简洁、专业、有数据支撑。"
-    )
+        # 专业指标
+        indicators = calc_indicators(nav_df)
+        signals = calc_signals(nav_df)
+        score = calc_score(indicators, signals) if "error" not in indicators and "error" not in signals else {}
+
+        # 前十大持仓
+        top_holdings = get_fund_holdings(h["code"])
+
+        fund_details.append({
+            "code": h["code"],
+            "name": h["name"],
+            "shares": h["shares"],
+            "cost_nav": h["cost_nav"],
+            "current_nav": current_nav,
+            "value": value,
+            "cost_total": cost_total,
+            "profit": profit,
+            "profit_pct": profit_pct,
+            "weight_pct": 0,  # 计算后填充
+            "fund_type": info.get("fund_type", ""),
+            "fund_size": info.get("fund_size", ""),
+            "manager_name": info.get("manager", ""),
+            "establish_date": info.get("establish_date", ""),
+            "indicators": indicators,
+            "signals": signals,
+            "score": score,
+            "managers": managers,
+            "top_holdings": [th["stock_name"] for th in top_holdings[:5] if th.get("stock_name")],
+        })
+
+    # 计算权重
+    for fd in fund_details:
+        fd["weight_pct"] = round(fd["value"] / total_value * 100, 2) if total_value > 0 else 0
+
+    # ====== 组合层面分析 ======
+    total_profit = round(total_value - total_cost, 2)
+    total_profit_pct = round(total_profit / total_cost * 100, 2) if total_cost > 0 else 0
+
+    # 类型分布
+    type_dist = {}
+    for fd in fund_details:
+        t = fd["fund_type"] or "未知"
+        type_dist[t] = type_dist.get(t, 0) + fd["weight_pct"]
+
+    # 集中度（前3/前5持仓占比）
+    sorted_by_weight = sorted(fund_details, key=lambda x: x["weight_pct"], reverse=True)
+    top3_concentration = round(sum(f["weight_pct"] for f in sorted_by_weight[:3]), 2)
+    top5_concentration = round(sum(f["weight_pct"] for f in sorted_by_weight[:5]), 2)
+
+    # 收益贡献
+    gainers = sorted(fund_details, key=lambda x: x["profit_pct"], reverse=True)
+    losers = sorted(fund_details, key=lambda x: x["profit_pct"])
+
+    # 组合加权评分
+    avg_score = round(
+        sum(f["score"].get("total_score", 50) * f["weight_pct"] for f in fund_details if f["score"])
+        / max(sum(f["weight_pct"] for f in fund_details if f["score"]), 1),
+        1
+    ) if fund_details else 0
+
+    portfolio_summary = {
+        "total_value": round(total_value, 2),
+        "total_cost": round(total_cost, 2),
+        "total_profit": total_profit,
+        "total_profit_pct": total_profit_pct,
+        "fund_count": len(fund_details),
+        "type_distribution": type_dist,
+        "top3_concentration": top3_concentration,
+        "top5_concentration": top5_concentration,
+        "best_performer": gainers[0]["name"] + "(" + str(gainers[0]["profit_pct"]) + "%)" if gainers else "无",
+        "worst_performer": losers[0]["name"] + "(" + str(losers[0]["profit_pct"]) + "%)" if losers else "无",
+        "avg_score": avg_score,
+    }
+
+    # ====== 构建专业系统提示 ======
+    sections = []
+
+    # 组合概览
+    sections.append(f"""【组合总览】
+总市值: {portfolio_summary['total_value']} 元
+总成本: {portfolio_summary['total_cost']} 元
+累计盈亏: {portfolio_summary['total_profit']} 元 ({portfolio_summary['total_profit_pct']}%)
+持仓数量: {portfolio_summary['fund_count']} 只
+组合评分: {portfolio_summary['avg_score']}/100
+集中度: 前3持仓占比 {portfolio_summary['top3_concentration']}%, 前5占比 {portfolio_summary['top5_concentration']}%
+最佳表现: {portfolio_summary['best_performer']}
+最差表现: {portfolio_summary['worst_performer']}""")
+
+    # 类型分布
+    type_lines = [f"  {t}: {pct}%" for t, pct in sorted(type_dist.items(), key=lambda x: -x[1])]
+    sections.append("【持仓类型分布】\n" + "\n".join(type_lines))
+
+    # 每只基金详细数据
+    fund_lines = []
+    for fd in fund_details:
+        ind = fd["indicators"]
+        sig = fd["signals"]
+        sco = fd["score"]
+        lines = [
+            f"基金: {fd['name']}({fd['code']})",
+            f"  类型: {fd['fund_type']} | 规模: {fd['fund_size']} | 经理: {fd['manager_name']}",
+            f"  仓位占比: {fd['weight_pct']}% | 市值: {fd['value']} | 盈亏: {fd['profit']} ({fd['profit_pct']}%)",
+        ]
+        if "error" not in ind:
+            lines.append(f"  年化收益: {ind.get('annual_return', 'N/A')}% | 年化波动: {ind.get('annual_volatility', 'N/A')}%")
+            lines.append(f"  最大回撤: {ind.get('max_drawdown', 'N/A')}% | 夏普比率: {ind.get('sharpe_ratio', 'N/A')}")
+            lines.append(f"  近1月: {ind.get('return_1m', 'N/A')}% | 近3月: {ind.get('return_3m', 'N/A')}% | 近1年: {ind.get('return_1y', 'N/A')}%")
+        if "error" not in sig:
+            lines.append(f"  RSI: {sig.get('rsi', {}).get('value', 'N/A')} ({sig.get('rsi', {}).get('signal', '')})")
+            lines.append(f"  MACD: {sig.get('macd', {}).get('signal', 'N/A')} | 均线: {sig.get('ma', {}).get('status', '')}")
+        if sco:
+            lines.append(f"  综合评分: {sco.get('total_score', 'N/A')}/100 ({sco.get('level', '')}) | 建议: {sco.get('action', '')}")
+        if fd["top_holdings"]:
+            lines.append(f"  前5重仓: {'/'.join(fd['top_holdings'])}")
+        if fd["managers"]:
+            mgr = fd["managers"][0]
+            lines.append(f"  基金经理: {mgr.get('name', '')} 任职回报: {mgr.get('return_rate', 'N/A')}")
+        fund_lines.append("\n".join(lines))
+
+    sections.append("【持仓明细分析】\n" + "\n".join(fund_lines))
+
+    portfolio_context = "\n\n".join(sections)
+
+    system_prompt = f"""你是资深基金投资顾问，拥有 CFA 资质和 15 年从业经验。你的分析风格专业、严谨、数据驱动。
+
+## 核心原则
+1. **只基于提供的数据回答**，不编造任何数据。数据中不存在的指标不要猜测。
+2. **回答必须引用具体数据**（如"该基金年化收益15%，夏普比率1.2"），避免模糊表述。
+3. **保持客观中立**，涨跌都不回避，风险与机会并述。
+4. **给出可操作的建议**，但必须附带理由。
+5. **使用表格/列表**让复杂信息更易读。
+6. **中文回答**，专业术语可保留英文（如 Sharpe Ratio）。
+
+## 用户当前持仓分析数据
+
+{portfolio_context}
+
+## 回答框架（根据不同问题类型选择）
+
+**【组合诊断类】** "我持仓怎么样/风险高吗"
+→ 分析组合结构（类型分散度）、集中度风险、整体收益表现
+→ 指出优势（如夏普比率高）和风险点（如某基金回撤大）
+→ 给出优化建议
+
+**【单基金分析类】** "XX基金怎么样/值得持有吗"
+→ 年化收益、回撤、夏普比率等关键指标
+→ 技术面信号（RSI超买超卖、MACD金叉死叉）
+→ 综合评分和投资建议
+→ 结合其在组合中的权重和角色分析
+
+**【对比类】** "哪只最好/哪个该卖"
+→ 用数据横向对比（收益、风险、评分）
+→ 给出排名和建议优先级
+→ 考虑组合整体影响
+
+**【市场/操作类】** "该加仓吗/要调仓吗"
+→ 结合技术面信号和组合现状
+→ 分析不同选择的机会成本
+→ 给出具体比例建议
+
+## 重要限制
+- 不预测未来涨跌
+- 不推荐具体股票/行业
+- 不讨论政治/政策敏感话题
+- 提示用户所有投资有风险
+- 数据日期以分析数据中标注为准"""
+
+    # 构建消息列表
+    messages = [{"role": "system", "content": system_prompt}]
+    # 添加对话历史（最多保留最近10轮）
+    for h in history[-10:]:
+        messages.append({"role": h.get("role", "user"), "content": h.get("content", "")})
+    messages.append({"role": "user", "content": message})
 
     # 调用 DeepSeek API
     url = "https://api.deepseek.com/v1/chat/completions"
@@ -952,11 +1131,8 @@ def ai_chat():
     }
     body = json_module.dumps({
         "model": DEEPSEEK_MODEL,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": message},
-        ],
-        "temperature": 0.7,
+        "messages": messages,
+        "temperature": 0.3,  # 低温确保事实准确性
         "max_tokens": 2000,
     }).encode("utf-8")
 
