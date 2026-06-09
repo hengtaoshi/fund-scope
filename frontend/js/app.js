@@ -293,42 +293,52 @@ async function autoRefreshDashboard() {
     }
 }
 // 同步所有定投持仓的累计投入到当前日期（静默更新数据库 + 本地值）
-// 使用日历日期计算期数（不受净值数据更新时间影响）
+// 用净值交易日数量算期数，最后交易日 < 今天且今天是交易日时补 1 期
 // 返回 { [id]: { startNav, currentNav, expectedInvested, isStopped } }
 async function syncDcaHoldings(holdings) {
     const dcaInfo = {};
     const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
+    const y = today.getFullYear(), m = today.getMonth() + 1, d = today.getDate();
+    const todayLocal = y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
 
     for (const x of holdings) {
         if (x.total_invested == null || !x.dca_start_date) continue;
         try {
             const navData = await api(`/api/fund/${x.code}/nav`);
             const startStr = x.dca_start_date.slice(0, 10);
-            const startDate = new Date(startStr);
-            const endStr = x.dca_end_date || todayStr;
+            const endStr = x.dca_end_date || todayLocal;
             const endDate = new Date(endStr);
 
-            // 基于日历日期计算已过期数
             let buyCount = 0;
-            if (x.dca_amount && x.dca_frequency) {
+            if (navData && navData.data && navData.data.length && x.dca_amount && x.dca_frequency) {
+                const records = navData.data.filter(r => r.日期 >= startStr && r.日期 <= endStr);
                 if (x.dca_frequency === 'daily') {
-                    // 从开始日到结束日（含两端）的天数
-                    buyCount = Math.max(0, Math.floor((endDate - startDate) / (86400000)) + 1);
+                    buyCount = records.length;
+                    // 今天净值未公布但已是交易日 → 补 1 期
+                    if (!x.dca_end_date && records.length > 0) {
+                        const last = records[records.length - 1].日期;
+                        if (last < endStr) {
+                            const dow = endDate.getDay();
+                            if (dow >= 1 && dow <= 5) buyCount += 1;
+                        }
+                    }
                 } else if (x.dca_frequency === 'weekly') {
-                    const msPerWeek = 7 * 86400000;
-                    buyCount = Math.max(0, Math.floor((endDate - startDate) / msPerWeek) + 1);
+                    buyCount = Math.max(0, Math.ceil(records.length / 5));
                 } else if (x.dca_frequency === 'monthly') {
-                    buyCount = (endDate.getFullYear() - startDate.getFullYear()) * 12
-                        + (endDate.getMonth() - startDate.getMonth()) + 1;
-                    if (buyCount < 0) buyCount = 0;
+                    const months = new Set(records.map(r => r.日期.slice(0, 7)));
+                    buyCount = months.size;
+                    // 本月尚无净值记录 → 补 1 期
+                    if (!x.dca_end_date) {
+                        const curMonth = endStr.slice(0, 7);
+                        if (!months.has(curMonth)) buyCount += 1;
+                    }
                 }
             }
 
             const expectedInvested = buyCount * (x.dca_amount || 0);
             let startNav = null, currentNav = null;
             if (navData && navData.data && navData.data.length) {
-                const startIdx = navData.data.findIndex(d => d.日期 >= startStr);
+                const startIdx = navData.data.findIndex(r => r.日期 >= startStr);
                 startNav = startIdx >= 0 ? navData.data[startIdx].单位净值 : null;
                 currentNav = navData.data[navData.data.length - 1].单位净值;
             }
@@ -659,19 +669,31 @@ async function submitHolding() {
         const startIdx = navData.data.findIndex(d => d.日期 >= dcaStart);
         if (startIdx < 0) { showToast('开始日期早于基金成立日'); return; }
 
-        // 用日历日期计算总期数（与 syncDcaHoldings 保持一致）
-        const dcaStartDate = new Date(dcaStart);
+        // 用净值交易日数量计算总期数（与 syncDcaHoldings 保持一致）
         const dcaToday = new Date();
-        const dcaEndDate = new Date(dcaToday.toISOString().slice(0, 10));
+        const navRecords = navData.data.slice(startIdx);
         let totalPeriods = 0;
         if (dcaFreq === 'daily') {
-            totalPeriods = Math.max(0, Math.floor((dcaEndDate - dcaStartDate) / 86400000) + 1);
+            totalPeriods = navRecords.length;
+            // 今天净值未公布但已是交易日 → 补 1 期
+            if (navRecords.length > 0) {
+                const last = navRecords[navRecords.length - 1].日期;
+                const y2 = dcaToday.getFullYear(), m2 = dcaToday.getMonth() + 1, d2 = dcaToday.getDate();
+                const todayLocal2 = y2 + '-' + String(m2).padStart(2, '0') + '-' + String(d2).padStart(2, '0');
+                if (last < todayLocal2) {
+                    const dow = dcaToday.getDay();
+                    if (dow >= 1 && dow <= 5) totalPeriods += 1;
+                }
+            }
         } else if (dcaFreq === 'weekly') {
-            totalPeriods = Math.max(0, Math.floor((dcaEndDate - dcaStartDate) / (7 * 86400000)) + 1);
+            totalPeriods = Math.max(0, Math.ceil(navRecords.length / 5));
         } else if (dcaFreq === 'monthly') {
-            totalPeriods = (dcaEndDate.getFullYear() - dcaStartDate.getFullYear()) * 12
-                + (dcaEndDate.getMonth() - dcaStartDate.getMonth()) + 1;
-            if (totalPeriods < 0) totalPeriods = 0;
+            const months = new Set(navRecords.map(r => r.日期.slice(0, 7)));
+            totalPeriods = months.size;
+            // 本月尚无净值记录 → 补 1 期
+            const y2 = dcaToday.getFullYear(), m2 = dcaToday.getMonth() + 1;
+            const curMonth2 = y2 + '-' + String(m2).padStart(2, '0');
+            if (!months.has(curMonth2)) totalPeriods += 1;
         }
 
         totalInvested = totalPeriods * dcaAmt;
