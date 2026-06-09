@@ -22,9 +22,8 @@ from database import init_db, add_holding, get_all_holdings, get_holding, update
 from fund_analysis import calc_indicators, calc_signals, calc_score
 from email_sender import send_report, test_connection as test_smtp, send_deploy_notification, send_daily_report
 from config import CACHE_DIR, DAILY_REPORT_EMAIL, DAILY_REPORT_TIME, DEEPSEEK_API_KEY, DEEPSEEK_MODEL
-# 默认 JWT_SECRET（生产环境应用环境变量覆盖）
-if not os.environ.get("JWT_SECRET"):
-    os.environ["JWT_SECRET"] = "fund-dashboard-jwt-secret-key-2025"
+# JWT_SECRET 必须通过环境变量或 .env 文件设置
+# 生成命令：python3 -c "import secrets; print(secrets.token_hex(32))"
 
 from auth import (
     sign_jwt, verify_jwt, verify_password, hash_password,

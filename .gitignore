@@ -13,6 +13,9 @@ backend/data/cache/
 .env
 *.env.local
 
+# AI assistant config (contains local paths/credentials)
+CLAUDE.md
+
 # Dev scripts (not for production)
 fix_auth.py
 run_local.bat
