@@ -293,40 +293,53 @@ async function autoRefreshDashboard() {
     }
 }
 // 同步所有定投持仓的累计投入到当前日期（静默更新数据库 + 本地值）
+// 使用日历日期计算期数（不受净值数据更新时间影响）
 // 返回 { [id]: { startNav, currentNav, expectedInvested, isStopped } }
 async function syncDcaHoldings(holdings) {
     const dcaInfo = {};
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+
     for (const x of holdings) {
         if (x.total_invested == null || !x.dca_start_date) continue;
         try {
             const navData = await api(`/api/fund/${x.code}/nav`);
-            if (!navData || !navData.data) continue;
-            const startIdx = navData.data.findIndex(d => d.日期 >= x.dca_start_date);
-            if (startIdx < 0) continue;
-            const start = navData.data[startIdx];
-            const lastNavDate = navData.data[navData.data.length - 1].日期;
-            const cutoffDate = x.dca_end_date || lastNavDate;
-            const endIdx = navData.data.findIndex(d => d.日期 > cutoffDate);
-            const effectiveNavs = navData.data.slice(startIdx, endIdx >= 0 ? endIdx : navData.data.length);
+            const startStr = x.dca_start_date.slice(0, 10);
+            const startDate = new Date(startStr);
+            const endStr = x.dca_end_date || todayStr;
+            const endDate = new Date(endStr);
+
+            // 基于日历日期计算已过期数
             let buyCount = 0;
             if (x.dca_amount && x.dca_frequency) {
                 if (x.dca_frequency === 'daily') {
-                    buyCount = effectiveNavs.length;
+                    // 从开始日到结束日（含两端）的天数
+                    buyCount = Math.max(0, Math.floor((endDate - startDate) / (86400000)) + 1);
                 } else if (x.dca_frequency === 'weekly') {
-                    buyCount = effectiveNavs.filter((_, i) => i % 5 === 0).length;
+                    const msPerWeek = 7 * 86400000;
+                    buyCount = Math.max(0, Math.floor((endDate - startDate) / msPerWeek) + 1);
                 } else if (x.dca_frequency === 'monthly') {
-                    const seen = new Set();
-                    buyCount = effectiveNavs.filter(d => { const m = d.日期.slice(0,7); if (seen.has(m)) return false; seen.add(m); return true; }).length;
+                    buyCount = (endDate.getFullYear() - startDate.getFullYear()) * 12
+                        + (endDate.getMonth() - startDate.getMonth()) + 1;
+                    if (buyCount < 0) buyCount = 0;
                 }
             }
+
             const expectedInvested = buyCount * (x.dca_amount || 0);
-            const row = navData.data[navData.data.length - 1];
+            let startNav = null, currentNav = null;
+            if (navData && navData.data && navData.data.length) {
+                const startIdx = navData.data.findIndex(d => d.日期 >= startStr);
+                startNav = startIdx >= 0 ? navData.data[startIdx].单位净值 : null;
+                currentNav = navData.data[navData.data.length - 1].单位净值;
+            }
+
             dcaInfo[x.id] = {
-                startNav: start ? start.单位净值 : null,
-                currentNav: row ? row.单位净值 : null,
+                startNav: startNav,
+                currentNav: currentNav,
                 expectedInvested: expectedInvested,
                 isStopped: !!x.dca_end_date,
             };
+
             if (expectedInvested > 0 && Math.abs(expectedInvested - (x.total_invested || 0)) > 0.01) {
                 x.total_invested = expectedInvested;
                 api(`/api/portfolio/${x.id}`, {
@@ -645,17 +658,38 @@ async function submitHolding() {
         if (!navData || !navData.data) { showToast('获取净值失败'); return; }
         const startIdx = navData.data.findIndex(d => d.日期 >= dcaStart);
         if (startIdx < 0) { showToast('开始日期早于基金成立日'); return; }
-        const navs = navData.data.slice(startIdx);
-        let buyNavs = [];
-        if (dcaFreq === 'daily') buyNavs = navs;
-        else if (dcaFreq === 'weekly') buyNavs = navs.filter((_, i) => i % 5 === 0);
-        else if (dcaFreq === 'monthly') {
-            const seen = new Set();
-            buyNavs = navs.filter(d => { const m = d.日期.slice(0,7); if (seen.has(m)) return false; seen.add(m); return true; });
+
+        // 用日历日期计算总期数（与 syncDcaHoldings 保持一致）
+        const dcaStartDate = new Date(dcaStart);
+        const dcaToday = new Date();
+        const dcaEndDate = new Date(dcaToday.toISOString().slice(0, 10));
+        let totalPeriods = 0;
+        if (dcaFreq === 'daily') {
+            totalPeriods = Math.max(0, Math.floor((dcaEndDate - dcaStartDate) / 86400000) + 1);
+        } else if (dcaFreq === 'weekly') {
+            totalPeriods = Math.max(0, Math.floor((dcaEndDate - dcaStartDate) / (7 * 86400000)) + 1);
+        } else if (dcaFreq === 'monthly') {
+            totalPeriods = (dcaEndDate.getFullYear() - dcaStartDate.getFullYear()) * 12
+                + (dcaEndDate.getMonth() - dcaStartDate.getMonth()) + 1;
+            if (totalPeriods < 0) totalPeriods = 0;
         }
-        totalInvested = buyNavs.length * dcaAmt;
+
+        totalInvested = totalPeriods * dcaAmt;
+
+        // 用净值数据逐期计算份额（按交易日匹配）
         let totalShares = 0;
-        buyNavs.forEach(d => { totalShares += dcaAmt / d.单位净值; });
+        if (dcaFreq === 'daily') {
+            const navs = navData.data.slice(startIdx);
+            navs.forEach(d => { totalShares += dcaAmt / d.单位净值; });
+        } else if (dcaFreq === 'weekly') {
+            const navs = navData.data.slice(startIdx);
+            navs.filter((_, i) => i % 5 === 0).forEach(d => { totalShares += dcaAmt / d.单位净值; });
+        } else if (dcaFreq === 'monthly') {
+            const seen = new Set();
+            navData.data.slice(startIdx)
+                .filter(d => { const m = d.日期.slice(0,7); if (seen.has(m)) return false; seen.add(m); return true; })
+                .forEach(d => { totalShares += dcaAmt / d.单位净值; });
+        }
         shares = Math.round(totalShares * 100) / 100;
         cost = totalInvested / shares;
         showToast('✅ 定投计算完成');
