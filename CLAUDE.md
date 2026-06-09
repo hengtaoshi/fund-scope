@@ -43,15 +43,27 @@ touch /root/fund-cockpit/.deploy-trigger
 
 无测试、无 lint、无构建步骤。
 
-## Deployment (CI/CD)
+## Git 仓库
 
-- **Gitee Webhook** — push 到 `master` → Gitee POST `/api/deploy` → Flask 验证 token → `git fetch + reset --hard origin/master` → 写 `.deploy-trigger` 文件
-- **宿主机 cron** — 每分钟执行 `/root/fund-cockpit/deploy.sh`，检测到 `.deploy-trigger` 后执行 `docker compose up -d --build`
-- **`.env` 文件** — 在服务器 `/root/fund-cockpit/.env`，不存 Git，通过 docker-compose 注入容器
+- **远程仓库:** `https://gitee.com/hengtaoshi/quantitative-warehouse.git`
+- **分支策略:** 所有开发直接在 `master` 分支进行
 
-### 部署成功邮件通知
+## 标准部署流程（必须遵守）
 
-Webhook 执行后自动通过 SMTP 发送结果通知到 `DEPLOY_NOTIFY_EMAIL`。使用 `email_sender.py` 中的 `send_deploy_notification()` 发送，支持成功/失败状态和提交信息。
+所有代码变更必须经过以下流程，**禁止直接通过 SFTP/SCP 上传文件到服务器**：
+
+1. **本地修改 → 测试**
+2. **`git add` / `git commit` / `git push origin master`** 推送到 Gitee
+3. **Gitee Webhook 自动触发** → Gitee POST `/api/deploy` → Flask 验证 token → `git fetch + reset --hard origin/master` → 写 `.deploy-trigger` 文件
+4. **宿主机 cron 每分钟检测** — 发现 `.deploy-trigger` 后执行 `docker compose up -d --build`
+5. 部署成功/失败自动发送邮件通知到 `DEPLOY_NOTIFY_EMAIL`
+
+### 特殊情况处理
+
+- 服务器 `.env` 文件在 `/root/fund-cockpit/.env`，**不提交到 Git**，通过 docker-compose `env_file` 注入容器
+- Webhook 密钥 `WEBHOOK_SECRET` 在 `.env` 中配置
+- Gitee PAT 存在 `/root/.git-credentials`
+- 如需强制服务器从远程拉取最新代码（跳过 webhook）：`ssh root@124.221.92.130 "cd /root/fund-cockpit && git fetch origin master && git reset --hard origin/master && touch .deploy-trigger"`
 
 ## Server environment
 
