@@ -108,7 +108,7 @@ async function api(url, opts = {}) {
 
 function fmt(n) { return (n || 0).toLocaleString(); }
 function fmtPct(n) { return (n >= 0 ? '+' : '') + (n || 0).toFixed(2) + '%'; }
-function fmtMoney(n) { return '¥' + fmt(Math.round(n || 0)); }
+function fmtMoney(n) { return '¥' + (n || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
 function cls(val) { return val >= 0 ? 'text-up' : 'text-down'; }
 function tagCls(val) { return val >= 0 ? 'tag-up' : 'tag-down'; }
 
@@ -929,8 +929,8 @@ function calcDCA() {
     $('dcaResult').innerHTML = `
         <div style="font-size:13px;color:#b5aea0;">预计最终总资产</div>
         <div style="font-size:40px;font-weight:700;color:#c7883c;">${fmtMoney(total)}</div>
-        <div style="font-size:14px;color:#5a544a;margin-top:8px;">本金 <strong>¥${fmt(principal)}</strong> · 收益 <strong style="color:#c62828;">${fmtMoney(profit)}</strong></div>
-        <div style="font-size:12px;color:#b5aea0;">月投 ¥${fmt(monthly)} · ${years}年 · ${rate}%</div>`;
+        <div style="font-size:14px;color:#5a544a;margin-top:8px;">本金 <strong>${fmtMoney(principal)}</strong> · 收益 <strong style="color:#c62828;">${fmtMoney(profit)}</strong></div>
+        <div style="font-size:12px;color:#b5aea0;">月投 ${fmtMoney(monthly)} · ${years}年 · ${rate}%</div>`;
 }
 
 // ====== 设置 ======

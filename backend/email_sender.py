@@ -132,6 +132,73 @@ def send_report(to_email: str, report_data: dict) -> dict:
         return {"success": False, "message": f"发送失败: {str(e)[:100]}"}
 
 
+def send_deploy_notification(success: bool, commit_message: str = "", author: str = "", detail: str = "") -> dict:
+    """发送部署结果通知"""
+    if not SMTP_SERVER or not SMTP_USER or not SMTP_PASS:
+        return {"success": False, "message": "SMTP 未配置"}
+
+    to_email = os.getenv("DEPLOY_NOTIFY_EMAIL", "")
+    if not to_email:
+        return {"success": False, "message": "DEPLOY_NOTIFY_EMAIL 未设置"}
+
+    try:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        status_text = "✅ 部署成功" if success else "❌ 部署失败"
+        color = "#2e7d32" if success else "#c62828"
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#faf7f2;padding:20px;">
+<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.05);">
+    <div style="background:#2c2a26;color:#f5ede0;padding:24px;text-align:center;">
+        <h1 style="margin:0;font-size:18px;">基金驾驶舱 · 自动部署通知</h1>
+    </div>
+    <div style="padding:24px;">
+        <div style="text-align:center;padding:20px;background:{'#e8f5e9' if success else '#ffebee'};border-radius:8px;margin-bottom:16px;">
+            <div style="font-size:36px;margin-bottom:8px;">{'✅' if success else '❌'}</div>
+            <div style="font-size:20px;font-weight:600;color:{color};">{status_text}</div>
+            <div style="font-size:12px;color:#8a847a;margin-top:4px;">{now}</div>
+        </div>
+        <table style="width:100%;font-size:13px;border-collapse:collapse;">
+            <tr><td style="padding:8px 12px;color:#8a847a;width:80px;">提交信息</td><td style="padding:8px 12px;">{commit_message or '无'}</td></tr>
+            <tr style="background:#f8f5f0;"><td style="padding:8px 12px;color:#8a847a;">提交者</td><td style="padding:8px 12px;">{author or '未知'}</td></tr>
+            <tr><td style="padding:8px 12px;color:#8a847a;">时间</td><td style="padding:8px 12px;">{now}</td></tr>
+            {f'<tr style="background:#f8f5f0;"><td style="padding:8px 12px;color:#8a847a;">详情</td><td style="padding:8px 12px;color:#c62828;">{detail}</td></tr>' if detail else ''}
+        </table>
+    </div>
+    <div style="text-align:center;padding:16px;font-size:11px;color:#8a847a;border-top:1px solid #e8e0d4;">
+        基金驾驶舱 · 自动部署系统
+    </div>
+</div>
+</body>
+</html>"""
+
+        msg = MIMEMultipart("alternative")
+        sender_addr = EMAIL_FROM or SMTP_USER
+        msg["From"] = formataddr((FROM_NAME, sender_addr))
+        msg["To"] = to_email
+        msg["Subject"] = f"基金驾驶舱 · {status_text} ({now[:10]})"
+        msg.attach(MIMEText(html, "html", "utf-8"))
+
+        if SMTP_PORT == 465:
+            server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=15)
+        else:
+            server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15)
+            server.starttls()
+        server.login(SMTP_USER, SMTP_PASS)
+        server.sendmail(sender_addr, [to_email], msg.as_string())
+        server.quit()
+        return {"success": True, "message": f"通知已发送至 {to_email}"}
+
+    except smtplib.SMTPAuthenticationError:
+        return {"success": False, "message": "SMTP 认证失败，请检查邮箱地址和授权码"}
+    except smtplib.SMTPConnectError:
+        return {"success": False, "message": f"无法连接 SMTP 服务器 {SMTP_SERVER}:{SMTP_PORT}"}
+    except Exception as e:
+        return {"success": False, "message": f"发送失败: {str(e)[:200]}"}
+
+
 def test_connection() -> dict:
     """测试 SMTP 连接"""
     if not SMTP_SERVER or not SMTP_USER or not SMTP_PASS:

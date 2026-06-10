@@ -1,7 +1,23 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git tag *)",
+      "Bash(git push *)",
+      "Bash(ssh *)",
+      "Bash(python *)",
+      "Bash(python3 -c \"import paramiko; print\\('paramiko ok'\\)\")",
+      "Bash(git credential *)",
+      "Bash(python3 *)",
+      "Bash(pip install *)",
+      "Bash(pip3 --version)",
+      "Bash(\"C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python312\\\\python.exe\" -m pip install paramiko)",
+      "Bash(gh pr *)",
+      "Bash(git *)",
+      "Bash(apt-get install *)",
+      "Bash(sshpass *)"
     ]
   }
 }
