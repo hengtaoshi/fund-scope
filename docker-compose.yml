@@ -1,10 +1,9 @@
 # ============================================
 # 基金驾驶舱 — Docker Compose
-# 服务：Flask + Nginx 反向代理
+# 首次使用：cp .env.example .env 并填写你的配置
 # ============================================
 
 services:
-  # ---- Flask 后端（宿主机 Nginx 反代，无需额外 Nginx 容器） ----
   flask:
     build: .
     container_name: fund-cockpit-api
@@ -12,24 +11,35 @@ services:
     ports:
       - "127.0.0.1:5000:5000"
     volumes:
+      # Webhook 自动部署（无此需求可删除这一组 volume）
       - fund_data:/app/backend/data
-      - /root/fund-cockpit:/root/fund-cockpit
+      - /path/to/project:/path/to/project
       - /var/run/docker.sock:/var/run/docker.sock
-      - /root/.git-credentials:/root/.git-credentials:ro
+      - /path/to/.git-credentials:/path/to/.git-credentials:ro
       - /usr/bin/docker:/usr/local/bin/docker:ro
       - /usr/libexec/docker/cli-plugins:/usr/local/lib/docker/cli-plugins:ro
     environment:
+      - TZ=Asia/Shanghai
       - PORT=5000
       - JWT_SECRET=${JWT_SECRET}
-      - SMTP_SERVER=${SMTP_SERVER:-smtp.163.com}
+      # --- SMTP 邮箱（可选） ---
+      - SMTP_SERVER=${SMTP_SERVER:-smtp.qq.com}
       - SMTP_PORT=${SMTP_PORT:-465}
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
       - EMAIL_FROM=${EMAIL_FROM}
       - FROM_NAME=${FROM_NAME:-基金驾驶舱}
+      - REPLY_TO_EMAIL=${REPLY_TO_EMAIL}
+      # --- DeepSeek AI（可选） ---
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-chat}
+      # --- 每日收益报告（可选） ---
+      - DAILY_REPORT_EMAIL=${DAILY_REPORT_EMAIL}
+      - DAILY_REPORT_TIME=${DAILY_REPORT_TIME:-20:00}
+      # --- Webhook 自动部署（可选） ---
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
-      - PROJECT_DIR=/root/fund-cockpit
+      - PROJECT_DIR=${PROJECT_DIR:-/path/to/project}
+      - DEPLOY_NOTIFY_EMAIL=${DEPLOY_NOTIFY_EMAIL}
 
 volumes:
-  # SQLite 数据库 + 缓存数据持久化
   fund_data:

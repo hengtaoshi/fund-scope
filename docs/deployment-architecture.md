@@ -5,7 +5,7 @@
 ```
                       Internet
                          │
-                  fund.hengtaoyuan.asia
+                  your-domain.com
                          │ :443
                          ▼
 ┌─────────────────────────────────┐
@@ -42,13 +42,13 @@
 
 ## 请求处理流程
 
-1. **用户请求** → `https://fund.hengtaoyuan.asia` 到达服务器 443 端口
+1. **用户请求** → `https://your-domain.com` 到达服务器 443 端口
 2. **雷池 tengine** 接管连接（`reuseport` 与 aaPanel Nginx 共享 443 端口）
    - 完成 SSL 卸载
    - 经过 WAF 检测引擎（SQL 注入、XSS、CC 攻击等）
    - 检测通过后转发到 upstream `backend_1`（即 `127.0.0.1:9080`）
 3. **aaPanel Nginx** 收到请求
-   - 匹配 server_name `fund.hengtaoyuan.asia`
+   - 匹配 server_name `your-domain.com`
    - `proxy_pass http://127.0.0.1:5000`
 4. **fund-cockpit-api 容器** 处理请求并返回响应
 5. 响应沿原路径返回给用户

@@ -1,11 +1,12 @@
 """
-基金驾驶舱 — 认证模块
+基金范围 — 认证模块
 
 用户注册/登录：邮箱验证码 → 密码登录
 """
 import os
 import secrets
 import smtplib
+from functools import wraps
 from email.mime.text import MIMEText
 from email.header import Header
 from email.utils import formataddr
@@ -13,8 +14,9 @@ from datetime import datetime, timedelta
 
 import jwt
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask import request, jsonify
 
-from config import SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, FROM_NAME
+from config import SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, FROM_NAME, REPLY_TO_EMAIL
 from database import (
     get_user_by_email, create_user,
     save_verification_code, get_latest_code, mark_code_used,
@@ -60,6 +62,28 @@ def verify_password(password: str, password_hash: str) -> bool:
     return check_password_hash(password_hash, password)
 
 
+# ====== JWT 中间件 ======
+
+
+def login_required(f):
+    """JWT 登录校验装饰器"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if os.environ.get("SKIP_AUTH", "").lower() in ("1", "true"):
+            request.current_user = {"user_id": 1, "email": "dev@localhost"}
+            return f(*args, **kwargs)
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return jsonify({"error": "未登录"}), 401
+        token = auth.split(" ", 1)[1]
+        payload = verify_jwt(token)
+        if not payload:
+            return jsonify({"error": "登录已过期，请重新登录"}), 401
+        request.current_user = payload
+        return f(*args, **kwargs)
+    return decorated
+
+
 # ====== JWT 令牌 ======
 
 def sign_jwt(user_id: int, email: str) -> str:
@@ -82,6 +106,15 @@ def verify_jwt(token: str) -> dict | None:
         return None
 
 
+def refresh_jwt(token: str) -> str | None:
+    """刷新 JWT 令牌：验证旧令牌有效后签发新令牌（续期 7 天）"""
+    payload = verify_jwt(token)
+    if not payload:
+        return None
+    # 签发新令牌，沿用原有 user_id 和 email
+    return sign_jwt(payload["user_id"], payload["email"])
+
+
 # ====== 验证码 ======
 
 def generate_code() -> str:
@@ -102,6 +135,8 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
         sender_addr = EMAIL_FROM or SMTP_USER
         msg["From"] = formataddr((FROM_NAME, sender_addr))
         msg["To"] = to_email
+        if REPLY_TO_EMAIL:
+            msg["Reply-To"] = REPLY_TO_EMAIL
 
         if SMTP_PORT == 465:
             server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=10)
@@ -135,7 +170,7 @@ def send_verification_code(email: str) -> dict:
     code = generate_code()
     save_verification_code(email, code)
 
-    subject = "基金驾驶舱 - 验证码"
+    subject = "基金范围 - 验证码"
     body = f"""
 您的验证码为：{code}
 

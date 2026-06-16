@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="64" fill="#0B0E17"/>
+  <g transform="translate(40,40)">
+    <path d="M100 320 L160 240 L220 270 L280 150 L340 180 L400 60" stroke="#F0B90B" stroke-width="14" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="400" cy="60" r="16" fill="#F0B90B"/>
+    <path d="M40 360 L420 360" stroke="#1E293B" stroke-width="10" stroke-linecap="round"/>
+    <text x="215" y="420" font-family="sans-serif" font-size="48" font-weight="bold" fill="#F0B90B" text-anchor="middle">基金范围</text>
+  </g>
+</svg>

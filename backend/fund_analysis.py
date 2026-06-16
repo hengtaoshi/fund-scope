@@ -1,5 +1,5 @@
 """
-基金驾驶舱 — 分析引擎
+基金范围 — 分析引擎
 
 提供基金关键指标计算、技术信号分析、多因子评分。
 输入：历史净值 DataFrame（需包含 '单位净值' 列，日期升序）
@@ -11,6 +11,76 @@ from typing import Dict, Any, Optional
 # -------- 常量 --------
 RISK_FREE_RATE = 0.025  # 无风险利率 2.5%
 TRADING_DAYS = 252       # 年化交易日
+
+
+# -------- XIRR 真实年化收益率 --------
+
+
+def calc_xirr(cashflows: list) -> float | None:
+    """
+    计算 XIRR（年化内部收益率）
+
+    参数:
+        cashflows: [(date_str, amount), ...]
+           买入为负值（支出），卖出为正值（收入），当前市值为正（最后一天虚拟卖出）
+
+    返回:
+        float: 年化收益率（小数，如 0.083 = 8.3%）
+        None: 数据不足或计算失败
+    """
+    if len(cashflows) < 2:
+        return None
+
+    try:
+        from pyxirr import xirr
+        dates = [row[0] if isinstance(row[0], str) else row[0].isoformat() for row in cashflows]
+        amounts = [float(row[1]) for row in cashflows]
+        result = xirr(dates, amounts)
+        return float(result) if result is not None else None
+    except ImportError:
+        pass  # 降级到手动计算
+    except Exception:
+        pass
+
+    # 手动二分法计算 XIRR（降级方案）
+    # 目标是解 NPV = Σ(CF_i / (1+r)^(days_i/365)) = 0
+    import datetime
+
+    today = datetime.date.today()
+    parsed_dates = []
+    for row in cashflows:
+        if isinstance(row[0], str):
+            d = datetime.date.fromisoformat(row[0][:10])
+        else:
+            d = row[0]
+        parsed_dates.append(d)
+
+    amounts = [float(row[1]) for row in cashflows]
+
+    def npv(rate):
+        total = 0.0
+        for i, d in enumerate(parsed_dates):
+            days = (today - d).days
+            total += amounts[i] / ((1 + rate) ** (days / 365.0))
+        return total
+
+    # 二分法搜索
+    lo, hi = -0.99, 10.0
+    for _ in range(100):
+        mid = (lo + hi) / 2
+        try:
+            v = npv(mid)
+        except (OverflowError, ZeroDivisionError):
+            return None
+        if abs(v) < 1e-7:
+            return mid
+        if v > 0:
+            lo = mid
+        else:
+            hi = mid
+
+    return None
+
 
 # -------- 指标计算 --------
 
@@ -89,35 +159,70 @@ def calc_indicators(nav_df: pd.DataFrame) -> Dict[str, Any]:
         "end_date": str(dates[-1]) if dates is not None else "",
     }
 
-    # Alpha / Beta 需要市场数据，单独计算
-    alpha_beta = _calc_alpha_beta(daily_ret)
+    # Alpha / Beta 使用沪深300真实数据
+    alpha_beta = _calc_alpha_beta(nav, nav_df)
     result.update(alpha_beta)
 
     return result
 
 
-def _calc_alpha_beta(fund_daily_ret: np.ndarray) -> Dict[str, float]:
-    """计算 Alpha 和 Beta（简化版，使用等权重市场假设）"""
-    # 用基金自身收益作为基准的近似
-    # 注意：精确计算需要沪深300 数据
-    market_ret = np.mean(fund_daily_ret) + np.random.normal(0, 0.01, len(fund_daily_ret))
-    market_ret = market_ret[:len(fund_daily_ret)]
+def _calc_alpha_beta(nav: np.ndarray, nav_df: pd.DataFrame) -> Dict[str, float]:
+    """计算 Alpha 和 Beta（使用沪深300真实数据）"""
+    try:
+        from fund_data import get_index_data
+        index_df = get_index_data("000300")
+        if index_df.empty or "日期" not in index_df.columns or "收盘" not in index_df.columns:
+            return {"alpha": None, "beta": None}
 
-    if len(fund_daily_ret) < 2 or np.std(market_ret) == 0:
-        return {"alpha": 0, "beta": 1.0}
+        # 构建指数日收益映射 {日期: 收益率}
+        idx = index_df[["日期", "收盘"]].copy()
+        idx["指数日收益"] = idx["收盘"].pct_change()
+        idx_map = {}
+        for _, row in idx.iterrows():
+            d = str(row["日期"])[:10]
+            idx_map[d] = float(row["指数日收益"]) if pd.notna(row["指数日收益"]) else None
 
-    cov = np.cov(fund_daily_ret, market_ret)[0, 1]
-    var_market = np.var(market_ret)
-    beta = cov / var_market if var_market > 0 else 1.0
+        # 对齐基金和指数的日期，计算日收益率
+        dates = nav_df["日期"].values if "日期" in nav_df.columns else None
+        if dates is None or len(dates) < 10:
+            return {"alpha": None, "beta": None}
 
-    fund_avg = np.mean(fund_daily_ret)
-    market_avg = np.mean(market_ret)
-    alpha = (fund_avg - RISK_FREE_RATE / TRADING_DAYS) - beta * (market_avg - RISK_FREE_RATE / TRADING_DAYS)
+        fund_rets = []
+        market_rets = []
+        prev_nav = None
+        for i in range(len(nav)):
+            d = str(dates[i])[:10]
+            if d in idx_map and idx_map[d] is not None:
+                if prev_nav is not None and prev_nav > 0:
+                    fund_ret = nav[i] / prev_nav - 1
+                    fund_rets.append(fund_ret)
+                    market_rets.append(idx_map[d])
+                prev_nav = nav[i]
 
-    return {
-        "alpha": round(float(alpha) * TRADING_DAYS * 100, 2),  # 年化 Alpha
-        "beta": round(float(beta), 2),
-    }
+        if len(fund_rets) < 10:
+            return {"alpha": None, "beta": None}
+
+        fund_arr = np.array(fund_rets)
+        market_arr = np.array(market_rets)
+
+        cov = np.cov(fund_arr, market_arr)[0, 1]
+        var_market = np.var(market_arr)
+        beta = cov / var_market if var_market > 0 else 1.0
+
+        fund_avg = np.mean(fund_arr)
+        market_avg = np.mean(market_arr)
+        rf_daily = RISK_FREE_RATE / TRADING_DAYS
+        alpha = (fund_avg - rf_daily) - beta * (market_avg - rf_daily)
+
+        return {
+            "alpha": round(float(alpha) * TRADING_DAYS * 100, 2),  # 年化 Alpha
+            "beta": round(float(beta), 2),
+        }
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"[WARN] Alpha/Beta 计算失败: {e}")
+    return {"alpha": None, "beta": None}
 
 
 # -------- 技术信号 --------
@@ -403,3 +508,96 @@ def _score_stability(ind: Dict[str, Any]) -> int:
         return 50
     else:
         return 30
+
+
+# -------- 组合风险指标 --------
+
+
+def calc_portfolio_var(nav_df_list: list[pd.DataFrame], weights: list[float],
+                       confidence: float = 0.95) -> dict:
+    """
+    计算组合 VaR（历史模拟法）
+
+    参数:
+        nav_df_list: 每只基金的净值 DataFrame 列表（含 '单位净值' 列）
+        weights: 每只基金的市值权重
+        confidence: 置信度，默认 95%
+
+    返回:
+        dict: { daily_var, annual_var, daily_cvar, max_drawdown, current_drawdown, volatility }
+    """
+    if not nav_df_list or not weights or len(nav_df_list) != len(weights):
+        return {"error": "参数无效"}
+
+    # 计算每只基金的日收益率序列，对齐日期
+    daily_rets = []
+    common_dates = None
+
+    for df in nav_df_list:
+        if df.empty or "单位净值" not in df.columns:
+            continue
+        d = df[["日期", "单位净值"]].copy()
+        d["ret"] = d["单位净值"].pct_change()
+        d = d.dropna()
+        if common_dates is None:
+            common_dates = set(d["日期"].values)
+        else:
+            common_dates = common_dates & set(d["日期"].values)
+
+    if not common_dates or len(common_dates) < 5:
+        return {"error": "数据不足"}
+
+    # 构建组合日收益率
+    portfolio_rets = []
+    for df in nav_df_list:
+        if df.empty or "单位净值" not in df.columns:
+            continue
+        d = df[["日期", "单位净值"]].copy()
+        d["ret"] = d["单位净值"].pct_change()
+        d = d[d["日期"].isin(common_dates)].dropna()
+        if not d.empty:
+            portfolio_rets.append(d["ret"].values[:len(common_dates)])
+
+    if not portfolio_rets:
+        return {"error": "数据不足"}
+
+    # 等权组合日收益率
+    n_funds = len(portfolio_rets)
+    min_len = min(len(r) for r in portfolio_rets)
+    combined_ret = np.zeros(min_len)
+    for r in portfolio_rets:
+        combined_ret += r[:min_len] / n_funds
+
+    # VaR (历史模拟法)
+    sorted_rets = np.sort(combined_ret)
+    var_idx = int(len(sorted_rets) * (1 - confidence))
+    daily_var = float(sorted_rets[var_idx]) if var_idx < len(sorted_rets) else 0.0
+
+    # CVaR (低于 VaR 的均值)
+    cvar_vals = sorted_rets[:var_idx + 1]
+    daily_cvar = float(np.mean(cvar_vals)) if len(cvar_vals) > 0 else daily_var
+
+    # 年化
+    annual_var = daily_var * np.sqrt(252)
+    annual_vol = float(np.std(combined_ret, ddof=1) * np.sqrt(252))
+
+    # 最大回撤
+    cum = np.cumprod(1 + combined_ret)
+    running_max = np.maximum.accumulate(cum)
+    drawdown = (cum - running_max) / running_max
+    max_dd = float(np.min(drawdown)) if len(drawdown) > 0 else 0.0
+    current_dd = float(drawdown[-1]) if len(drawdown) > 0 else 0.0
+
+    # 夏普
+    sharpe = (np.mean(combined_ret) * 252 - RISK_FREE_RATE) / annual_vol if annual_vol > 0 else 0
+
+    return {
+        "daily_var_95": round(daily_var * 100, 2),
+        "annual_var_95": round(annual_var * 100, 2),
+        "daily_cvar_95": round(daily_cvar * 100, 2),
+        "max_drawdown": round(max_dd * 100, 2),
+        "current_drawdown": round(current_dd * 100, 2),
+        "volatility": round(annual_vol * 100, 2),
+        "sharpe_ratio": round(sharpe, 3),
+        "data_days": min_len,
+    }

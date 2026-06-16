@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>基金范围 · 配色方案</title>
+<style>
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", "PingFang SC", sans-serif;
+    background: #0a0e17; color: #e2e8f0; padding: 40px 24px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; letter-spacing: 1px; }
+  .subtitle { color: #64748b; font-size: 13px; margin-bottom: 36px; }
+  .container { max-width: 1000px; width: 100%; }
+
+  /* ====== 设计系统网格 ====== */
+  .section { margin-bottom: 48px; }
+  .section-title {
+    font-size: 13px; font-weight: 600; color: #64748b; letter-spacing: 2px; text-transform: uppercase;
+    margin-bottom: 20px; padding-bottom: 8px; border-bottom: 1px solid #1e293b;
+  }
+
+  /* 色板网格 */
+  .palette-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+  .swatch {
+    border-radius: 10px; padding: 16px; min-height: 90px;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    font-size: 11px; font-weight: 500; position: relative; overflow: hidden;
+  }
+  .swatch .hex { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+  .swatch .name { font-size: 11px; opacity: 0.8; }
+  .swatch .tag {
+    position: absolute; top: 8px; right: 8px;
+    font-size: 9px; padding: 2px 8px; border-radius: 4px;
+    background: rgba(0,0,0,0.3); backdrop-filter: blur(4px);
+  }
+
+  /* 背景色块用边框区分 */
+  .swatch.bg-dark { border: 1px solid #1e293b; }
+  .swatch.bg-light { color: #0a0e17; }
+
+  /* 风格参考卡片 */
+  .ref-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+  .ref-card {
+    background: #131926; border-radius: 12px; border: 1px solid #1e293b; overflow: hidden;
+    transition: transform .2s, border-color .2s;
+  }
+  .ref-card:hover { transform: translateY(-2px); border-color: #f59e0b33; }
+  .ref-preview {
+    height: 120px; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; position: relative;
+  }
+  .ref-info { padding: 14px; }
+  .ref-info h3 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .ref-info p { font-size: 11px; color: #64748b; line-height: 1.6; }
+
+  /* 文字样式展示 */
+  .type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .type-card {
+    background: #131926; border: 1px solid #1e293b; border-radius: 10px; padding: 20px;
+  }
+  .type-card h3 { font-size: 12px; color: #64748b; font-weight: 600; margin-bottom: 14px; letter-spacing: 1px; }
+  .type-sample { margin-bottom: 12px; }
+  .type-sample:last-child { margin-bottom: 0; }
+  .type-label { font-size: 10px; color: #475569; margin-bottom: 2px; }
+  .up { color: #ef4444; } .down { color: #22c55e; } .accent { color: #f59e0b; } .info { color: #06b6d4; } .muted { color: #64748b; }
+
+  /* 组件预览 */
+  .comp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .comp-card {
+    background: #131926; border: 1px solid #1e293b; border-radius: 10px; padding: 20px;
+  }
+  .comp-card h3 { font-size: 12px; color: #64748b; font-weight: 600; margin-bottom: 14px; letter-spacing: 1px; }
+
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 500;
+    border: none; cursor: default; transition: all .2s;
+  }
+  .btn-primary { background: #f59e0b; color: #0a0e17; }
+  .btn-secondary { background: #1e293b; color: #e2e8f0; }
+  .btn-outline { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+  .btn-ghost { background: transparent; color: #64748b; }
+  .btn-danger { background: #ef4444; color: #fff; }
+  .btn-success { background: #22c55e; color: #fff; }
+
+  .tag-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+  .tag {
+    padding: 3px 12px; border-radius: 6px; font-size: 11px; font-weight: 500;
+  }
+  .tag-up { background: #ef444415; color: #ef4444; border: 1px solid #ef444430; }
+  .tag-down { background: #22c55e15; color: #22c55e; border: 1px solid #22c55e30; }
+  .tag-neutral { background: #f59e0b15; color: #f59e0b; border: 1px solid #f59e0b30; }
+  .tag-info { background: #06b6d415; color: #06b6d4; border: 1px solid #06b6d430; }
+
+  .stat-row { display: flex; gap: 12px; margin-top: 12px; }
+  .stat-box {
+    flex: 1; background: #1a2235; border-radius: 8px; padding: 14px 16px;
+    border: 1px solid #1e293b;
+  }
+  .stat-label { font-size: 11px; color: #64748b; margin-bottom: 4px; }
+  .stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  .stat-change { font-size: 12px; margin-top: 2px; }
+
+  /* 表格 */
+  .table-wrap { overflow-x: auto; border-radius: 8px; margin-top: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 14px; background: #1a2235; color: #64748b; font-weight: 500; font-size: 11px; letter-spacing: 0.5px; }
+  td { padding: 10px 14px; border-bottom: 1px solid #1e293b; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #1a2235; }
+
+  /* 侧边栏预览 */
+  .sidebar-preview {
+    display: flex; gap: 0; border-radius: 12px; overflow: hidden; border: 1px solid #1e293b;
+  }
+  .sidebar-sample {
+    width: 200px; background: #0d1321; padding: 20px 0;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .sidebar-sample .brand {
+    padding: 0 20px 16px; font-size: 14px; font-weight: 700; color: #f59e0b;
+    border-bottom: 1px solid #1e293b; margin-bottom: 8px;
+  }
+  .sidebar-sample .nav-item {
+    padding: 10px 20px; font-size: 13px; color: #64748b;
+    border-left: 3px solid transparent; cursor: default; transition: all .2s;
+  }
+  .sidebar-sample .nav-item:hover { background: #131926; color: #e2e8f0; }
+  .sidebar-sample .nav-item.active { background: #131926; color: #f59e0b; border-left-color: #f59e0b; }
+
+  .sidebar-sample .main-preview {
+    flex: 1; background: #0a0e17; padding: 20px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .sidebar-sample .main-preview .topbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 12px; border-bottom: 1px solid #1e293b;
+  }
+  .sidebar-sample .main-preview .topbar h2 { font-size: 16px; font-weight: 600; }
+  .sidebar-sample .main-preview .topbar span { font-size: 11px; color: #64748b; }
+
+  hr { border: none; border-top: 1px solid #1e293b; margin: 12px 0; }
+
+  /* 底部标识 */
+  .footer-note { text-align: center; font-size: 11px; color: #334155; margin-top: 48px; padding-top: 20px; border-top: 1px solid #1e293b; }
+
+  @media (max-width: 640px) {
+    .palette-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+    .comp-grid, .type-grid { grid-template-columns: 1fr; }
+    .ref-grid { grid-template-columns: 1fr; }
+    .sidebar-preview { flex-direction: column; }
+    .sidebar-sample { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>📊 基金范围 · 设计系统</h1>
+  <p class="subtitle">参照 Bloomberg / TradingView / 专业量化平台风格 · 深色量化主题</p>
+
+  <!-- ====== 1. 主色板 ====== -->
+  <div class="section">
+    <div class="section-title">🎨 主色板</div>
+    <div class="palette-grid">
+      <div class="swatch" style="background:#0a0e17;color:#e2e8f0;border:1px solid #1e293b;"><span class="tag">主背景</span><span class="hex">#0a0e17</span><span class="name">深渊黑 · 画布底色</span></div>
+      <div class="swatch" style="background:#0d1321;color:#e2e8f0;border:1px solid #1e293b;"><span class="tag">侧边栏</span><span class="hex">#0d1321</span><span class="name">侧栏 · 导航背景</span></div>
+      <div class="swatch" style="background:#131926;color:#e2e8f0;border:1px solid #1e293b;"><span class="tag">卡片</span><span class="hex">#131926</span><span class="name">卡片 · 容器底色</span></div>
+      <div class="swatch" style="background:#1a2235;color:#e2e8f0;border:1px solid #1e293b;"><span class="tag">表层</span><span class="hex">#1a2235</span><span class="name">表头 · 悬浮状态</span></div>
+      <div class="swatch" style="background:#1e293b;color:#94a3b8;"><span class="tag">边框</span><span class="hex">#1e293b</span><span class="name">分割线 · 边框</span></div>
+      <div class="swatch" style="background:#334155;color:#e2e8f0;"><span class="tag">按钮</span><span class="hex">#334155</span><span class="name">次按钮 · 输入框</span></div>
+    </div>
+    <div style="height:12px"></div>
+    <div class="palette-grid">
+      <div class="swatch" style="background:#f59e0b;color:#0a0e17;"><span class="tag">主色 ⭐</span><span class="hex">#f59e0b</span><span class="name">琥珀金 · 品牌色/重点</span></div>
+      <div class="swatch" style="background:#06b6d4;color:#0a0e17;"><span class="tag">辅助</span><span class="hex">#06b6d4</span><span class="name">青蓝 · 图表/链接</span></div>
+      <div class="swatch" style="background:#8b5cf6;color:#fff;"><span class="tag">辅助</span><span class="hex">#8b5cf6</span><span class="name">紫罗兰 · AI/特殊标签</span></div>
+      <div class="swatch" style="background:#ef4444;color:#fff;"><span class="tag">涨 📈</span><span class="hex">#ef4444</span><span class="name">中国红 · 上涨/买入</span></div>
+      <div class="swatch" style="background:#22c55e;color:#0a0e17;"><span class="tag">跌 📉</span><span class="hex">#22c55e</span><span class="name">翠绿 · 下跌/减仓</span></div>
+      <div class="swatch" style="background:#f97316;color:#0a0e17;"><span class="tag">预警</span><span class="hex">#f97316</span><span class="name">橙 · 警告/中性</span></div>
+    </div>
+  </div>
+
+  <!-- ====== 2. 文字层级 ====== -->
+  <div class="section">
+    <div class="section-title">🔤 文字层级</div>
+    <div class="palette-grid">
+      <div class="swatch" style="background:#f8fafc;color:#0a0e17;"><span class="hex">#f8fafc</span><span class="name">主文字 · 标题/数值</span></div>
+      <div class="swatch" style="background:#e2e8f0;color:#0a0e17;"><span class="hex">#e2e8f0</span><span class="name">正文 · 段落</span></div>
+      <div class="swatch" style="background:#94a3b8;color:#0a0e17;"><span class="hex">#94a3b8</span><span class="name">次要文字</span></div>
+      <div class="swatch" style="background:#64748b;color:#0a0e17;"><span class="hex">#64748b</span><span class="name">占位/禁用</span></div>
+      <div class="swatch" style="background:#475569;color:#e2e8f0;"><span class="hex">#475569</span><span class="name">最淡辅助</span></div>
+    </div>
+  </div>
+
+  <!-- ====== 3. 风格参考 ====== -->
+  <div class="section">
+    <div class="section-title">🏛️ 风格参考</div>
+    <div class="ref-grid">
+      <div class="ref-card">
+        <div class="ref-preview" style="background:linear-gradient(135deg,#0a0e17 0%,#131926 50%,#1a2235 100%);">
+          <span style="color:#f59e0b;font-size:16px;letter-spacing:2px;">BLOOMBERG</span>
+        </div>
+        <div class="ref-info"><h3>彭博终端风格</h3><p>黑底 + 琥珀金点缀 · 数据密度高 · 专业金融感</p></div>
+      </div>
+      <div class="ref-card">
+        <div class="ref-preview" style="background:linear-gradient(135deg,#0d1321 0%,#131926 50%,#0d1321 100%);">
+          <span style="color:#06b6d4;font-size:16px;letter-spacing:2px;">TRADINGVIEW</span>
+        </div>
+        <div class="ref-info"><h3>TradingView 风格</h3><p>深蓝灰底 + 青蓝图表 · 干净清晰 · 技术分析感</p></div>
+      </div>
+      <div class="ref-card">
+        <div class="ref-preview" style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#0f172a 100%);">
+          <span style="color:#8b5cf6;font-size:16px;letter-spacing:2px;">QUANT</span>
+        </div>
+        <div class="ref-info"><h3>现代量化平台</h3><p>紫罗兰辅助 + 严格数据层级 · 自动化/算法感</p></div>
+      </div>
+      <div class="ref-card">
+        <div class="ref-preview" style="background:linear-gradient(135deg,#0a0e17 0%,#131926 50%,#1a2235 100%);">
+          <span style="color:#22c55e;font-size:14px;letter-spacing:2px;">α β</span>
+        </div>
+        <div class="ref-info"><h3>因子分析平台</h3><p>绿色系强调 + 矩阵布局 · 学术量化感</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 4. 组件预览 ====== -->
+  <div class="section">
+    <div class="section-title">🧩 组件配色预览</div>
+    <div class="comp-grid">
+      <div class="comp-card">
+        <h3>按钮</h3>
+        <div class="btn-row">
+          <span class="btn btn-primary">主要操作</span>
+          <span class="btn btn-secondary">次要</span>
+          <span class="btn btn-outline">边框</span>
+          <span class="btn btn-ghost">幽灵</span>
+          <span class="btn btn-danger">卖出</span>
+          <span class="btn btn-success">买入</span>
+        </div>
+        <hr>
+        <h3>标签</h3>
+        <div class="tag-row">
+          <span class="tag tag-up">买入 ↑</span>
+          <span class="tag tag-down">减仓 ↓</span>
+          <span class="tag tag-neutral">持有 →</span>
+          <span class="tag tag-info">定投中</span>
+        </div>
+      </div>
+      <div class="comp-card">
+        <h3>统计卡片</h3>
+        <div class="stat-row">
+          <div class="stat-box"><div class="stat-label">总资产</div><div class="stat-value" style="color:#f8fafc;">¥328,642</div><div class="stat-change" style="color:#ef4444;">+2.34%</div></div>
+          <div class="stat-box"><div class="stat-label">累计收益</div><div class="stat-value" style="color:#ef4444;">+¥28,431</div><div class="stat-change" style="color:#22c55e;">昨日 -¥1,203</div></div>
+          <div class="stat-box"><div class="stat-label">组合评分</div><div class="stat-value" style="color:#f59e0b;">74</div><div class="stat-change" style="color:#f59e0b;">⭐⭐⭐ 良好</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 5. 表格 ====== -->
+  <div class="section">
+    <div class="section-title">📋 表格</div>
+    <div class="comp-card" style="padding:16px;">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>基金名称</th><th>最新净值</th><th>持仓市值</th><th>累计收益</th><th>收益率</th><th>较昨日</th><th>评分</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr><td><strong style="color:#f8fafc;">招商中证白酒指数</strong><br><span style="color:#475569;font-size:11px;">161725</span></td><td style="color:#ef4444;">1.3820</td><td>¥42,836</td><td style="color:#ef4444;">+¥8,234</td><td><span class="tag tag-up">+23.8%</span></td><td style="color:#ef4444;">+0.82%</td><td style="color:#f59e0b;">82</td><td><span class="btn btn-outline" style="padding:4px 12px;font-size:11px;">详情</span></td></tr>
+            <tr><td><strong style="color:#f8fafc;">易方达蓝筹精选</strong><br><span style="color:#475569;font-size:11px;">005827</span></td><td style="color:#22c55e;">1.2156</td><td>¥36,468</td><td style="color:#22c55e;">-¥3,215</td><td><span class="tag tag-down">-8.1%</span></td><td style="color:#ef4444;">+0.31%</td><td style="color:#06b6d4;">65</td><td><span class="btn btn-outline" style="padding:4px 12px;font-size:11px;">详情</span></td></tr>
+            <tr><td><strong style="color:#f8fafc;">中欧医疗健康混合</strong><br><span style="color:#475569;font-size:11px;">003095</span></td><td style="color:#22c55e;">0.9523</td><td>¥28,569</td><td style="color:#22c55e;">-¥5,432</td><td><span class="tag tag-down">-16.0%</span></td><td style="color:#22c55e;">-0.45%</td><td style="color:#f97316;">48</td><td><span class="btn btn-outline" style="padding:4px 12px;font-size:11px;">详情</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 6. 侧边栏布局预览 ====== -->
+  <div class="section">
+    <div class="section-title">📐 布局框架</div>
+    <div class="sidebar-preview">
+      <div class="sidebar-sample">
+        <div class="brand">📊 量化驾驶舱</div>
+        <div class="nav-item active">📊 概览</div>
+        <div class="nav-item">💼 持仓</div>
+        <div class="nav-item">🔍 分析</div>
+        <div class="nav-item">🧠 智能预测</div>
+        <div class="nav-item">⚖️ 对比</div>
+        <div class="nav-item">🎯 基金筛选</div>
+        <div class="nav-item">📅 定投</div>
+        <div class="nav-item">🤖 AI</div>
+        <div class="nav-item">⚙️ 设置</div>
+      </div>
+      <div class="main-preview">
+        <div class="topbar">
+          <h2 style="color:#f8fafc;">概览 <span style="font-size:12px;font-weight:400;color:#64748b;">今日数据 · 实时估算</span></h2>
+          <span style="color:#64748b;font-size:12px;">最后更新 15:30</span>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <div class="stat-box"><div class="stat-label">总资产</div><div class="stat-value" style="color:#f8fafc;font-size:18px;">¥328,642</div></div>
+          <div class="stat-box"><div class="stat-label">累计收益</div><div class="stat-value" style="color:#ef4444;font-size:18px;">+¥28,431</div></div>
+          <div class="stat-box"><div class="stat-label">昨日收益</div><div class="stat-value" style="color:#22c55e;font-size:18px;">-¥1,203</div></div>
+          <div class="stat-box"><div class="stat-label">持仓数量</div><div class="stat-value" style="color:#06b6d4;font-size:18px;">8</div></div>
+        </div>
+        <div style="flex:1;background:#1a2235;border-radius:8px;border:1px solid #1e293b;display:flex;align-items:center;justify-content:center;color:#475569;font-size:13px;min-height:120px;">
+          [ 净值走势图表区域 · Chart.js ]
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 7. 文字样式 ====== -->
+  <div class="section">
+    <div class="section-title">✏️ 文字样式</div>
+    <div class="type-card" style="background:#131926;border:1px solid #1e293b;border-radius:10px;padding:20px;">
+      <div class="type-sample"><span class="type-label">主标题 22px</span><div style="font-size:22px;font-weight:700;color:#f8fafc;">组合总资产 ¥328,642.58</div></div>
+      <div class="type-sample"><span class="type-label">正文 14px</span><div style="font-size:14px;color:#e2e8f0;">基于多因子评分模型，当前组合综合评分 74 分，评级良好。</div></div>
+      <div class="type-sample"><span class="type-label">数据高亮</span><div style="font-size:16px;"><span class="up">+8,234.00 (↑ +23.8%)</span> · <span class="down">-3,215.00 (↓ -8.1%)</span> · <span class="accent">评分 82</span> · <span class="info">Sharpe 1.24</span></div></div>
+      <div class="type-sample"><span class="type-label">辅助文字 12px</span><div style="font-size:12px;color:#64748b;">数据来源: akshare · 缓存 4h · 上次更新 2025-07-18 15:30</div></div>
+    </div>
+  </div>
+
+  <!-- ====== 8. 新旧配色对比 ====== -->
+  <div class="section">
+    <div class="section-title">🔄 新旧对比</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+      <div style="border:1px solid #1e293b;border-radius:12px;overflow:hidden;">
+        <div style="padding:12px 16px;background:#1e293b;font-size:12px;font-weight:600;color:#94a3b8;letter-spacing:1px;">旧版 · 暖色系</div>
+        <div style="padding:16px;display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <span style="padding:4px 10px;border-radius:4px;font-size:11px;background:#f5f0e8;color:#2c2a26;">#f5f0e8 背景</span>
+            <span style="padding:4px 10px;border-radius:4px;font-size:11px;background:#2c2a26;color:#f5ede0;">#2c2a26 侧栏</span>
+            <span style="padding:4px 10px;border-radius:4px;font-size:11px;background:#fff;color:#2d2a26;border:1px solid #e0d8cc;">#fff 卡片</span>
+            <span style="padding:4px 10px;border-radius:4px;font-size:11px;background:#c7883c;color:#fff;">#c7883c 金色</span>
+          </div>
+          <div style="font-size:11px;color:#64748b;">暖白米色背景 · 炭黑侧栏 · 暖金色点缀 · 偏基金销售网站风格</div>
+        </div>
+      </div>
+      <div style="border:1px solid #1e293b;border-radius:12px;overflow:hidden;">
+        <div style="padding:12px 16px;background:#1e293b;font-size:12px;font-weight:600;color:#94a3b8;letter-spacing:1px;">新版 · 深色量化</div>
+        <div style="padding:16px;display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <span style="padding:4px 10px;border-radius:4px;font-size:11px;background:#0a0e17;color:#e2e8f0;border:1px solid #1e293b;">#0a0e17 画布</span>
+            <span style="padding:4px 10px;border-radius:4px;font-size:11px;background:#0d1321;color:#e2e8f0;border:1px solid #1e293b;">#0d1321 侧栏</span>
+            <span style="padding:4px 10px;border-radius:4px;font-size:11px;background:#131926;color:#e2e8f0;border:1px solid #1e293b;">#131926 卡片</span>
+            <span style="padding:4px 10px;border-radius:4px;font-size:11px;background:#f59e0b;color:#0a0e17;">#f59e0b 琥珀金</span>
+          </div>
+          <div style="font-size:11px;color:#64748b;">深渊黑画布 · 深蓝侧栏 · 琥珀金品牌色 · Bloomberg/TradingView 专业风格</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-note">基金范围 · 量化配色方案 v2.0 · 深色主题</div>
+</div>
+</body>
+</html>

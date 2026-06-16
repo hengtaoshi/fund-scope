@@ -206,7 +206,7 @@ quantitative-warehouse/
 | 更多技术指标 | KDJ, OBV, 量价关系 |
 | 机器学习预测 | 基于历史数据的趋势预测（仅供参考） |
 | 用户登录 | 简单账号系统 |
-| Docker 部署 | 容器化到服务器 124.221.92.130 |
+| Docker 部署 | 容器化到服务器 YOUR_SERVER_IP |
 
 ---
 

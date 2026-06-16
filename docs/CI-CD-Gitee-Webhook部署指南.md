@@ -28,7 +28,7 @@
                                             ▼
                                   ┌─────────────────┐
                                   │   你的服务器       │
-                                  │  124.221.92.130  │
+                                  │  YOUR_SERVER_IP  │
                                   │                  │
                                   │  新 Flask 路由     │
                                   │  ↓               │
@@ -88,10 +88,10 @@ if actual_token != expected_token:
 
 ```bash
 # 1. 拉取最新代码
-cd /root/fund-cockpit && git pull origin master
+cd /path/to/project && git pull origin master
 
 # 2. 重新构建并启动 Docker 容器
-cd /root/fund-cockpit && docker compose up -d --build
+cd /path/to/project && docker compose up -d --build
 ```
 
 `--build` 参数让 Docker 重新构建镜像（因为 Python 代码或前端文件变了）。
@@ -126,7 +126,7 @@ def deploy_webhook():
         return jsonify({"message": f"跳过非 master 分支: {ref}"})
 
     # ---- 3. 执行部署 ----
-    project_dir = os.path.dirname(BASE_DIR)  # /root/fund-cockpit
+    project_dir = os.path.dirname(BASE_DIR)  # /path/to/project
     git_dir = os.path.join(project_dir, ".git")
     
     if not os.path.isdir(git_dir):
@@ -240,15 +240,15 @@ docker ps  # 看 fund-cockpit-api 的 STATUS 是否刚刚重启
 |------|-----|
 | **代码托管** | Gitee |
 | **仓库地址** | `https://gitee.com/hengtaoshi/quantitative-warehouse.git` |
-| **服务器 IP** | `124.221.92.130` |
+| **服务器 IP** | `YOUR_SERVER_IP` |
 | **域名** | `hengtaoyuan.asia` |
-| **项目路径** | `/root/fund-cockpit/` |
+| **项目路径** | `/path/to/project/` |
 | **容器名称** | `fund-cockpit-api` |
 | **编排工具** | Docker Compose (`docker-compose.yml`) |
 | **Flask 端口** | `5000`（仅绑定 127.0.0.1，由宿主机 Nginx 反代） |
 | **Nginx 反代** | 宿主机 `/etc/nginx/` 配置，域名 `hengtaoyuan.asia` → `127.0.0.1:5000` |
 | **持久化** | Docker Volume `fund_data` → `/app/backend/data`（SQLite 数据库） |
-| **环境变量** | `.env` 文件在 `/root/fund-cockpit/.env`（不存 Git） |
+| **环境变量** | `.env` 文件在 `/path/to/project/.env`（不存 Git） |
 | **Git 凭证** | 服务器已配置 `git credential-store`（首次部署时已设置） |
 
 ---

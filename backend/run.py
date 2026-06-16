@@ -8,5 +8,5 @@ from app import app
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     debug = os.getenv("FLASK_DEBUG", "0").lower() in ("1", "true")
-    print(f"基金驾驶舱后端启动 http://127.0.0.1:{port}  debug={debug}")
+    print(f"基金范围后端启动 http://127.0.0.1:{port}  debug={debug}")
     app.run(host="0.0.0.0", port=port, debug=debug)
