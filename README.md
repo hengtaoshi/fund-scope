@@ -14,10 +14,19 @@
 
 <p align="center">
   <a href="#features">功能</a> ·
+  <a href="#screenshots">截图</a> ·
   <a href="#quick-start">快速开始</a> ·
   <a href="#configuration">配置</a> ·
   <a href="#development">开发</a> ·
   <a href="#deployment">部署</a>
+</p>
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/dashboard.svg" alt="基金范围 - 概览页面" width="90%">
+  <br>
+  <em>概览页面 — 资产统计、组合历史走势、持仓明细</em>
 </p>
 
 ---
@@ -30,7 +39,7 @@
       <h3>📊 行情看板</h3>
       <ul>
         <li>总资产、累计收益、日收益一目了然</li>
-        <li>收益曲线 + 盈亏分布 Chart.js 可视化</li>
+        <li>组合历史走势曲线 + 盈亏分布 Chart.js 可视化</li>
         <li>昨日收益对比，追踪每日波动</li>
       </ul>
     </td>
@@ -91,6 +100,22 @@
       <ul>
         <li>JWT 认证，注册/登录/验证码</li>
         <li>邮箱验证，保障账户安全</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <h3>⭐ 自选列表</h3>
+      <ul>
+        <li>先跟踪再买入，管理感兴趣基金</li>
+        <li>一键从筛选/分析页加入自选</li>
+      </ul>
+    </td>
+    <td>
+      <h3>📱 PWA 支持</h3>
+      <ul>
+        <li>添加到主屏幕，像原生APP一样使用</li>
+        <li>Service Worker 离线缓存</li>
       </ul>
     </td>
   </tr>
@@ -168,6 +193,8 @@ docker compose up -d --build
 
 ---
 
+更多功能截图可以在 [docs/screenshots/](docs/screenshots/) 查看。
+
 ## Configuration
 
 所有配置通过环境变量注入，详见 [`.env.example`](.env.example)。
@@ -211,6 +238,8 @@ fund-scope/
 │   ├── index.html          # SPA 入口
 │   ├── css/                # 样式
 │   └── js/app.js           # 页面路由 & 交互逻辑
+├── docs/
+│   └── screenshots/        # 界面截图
 ├── Dockerfile
 ├── docker-compose.yml
 ├── .env.example

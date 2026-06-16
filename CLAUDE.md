@@ -76,7 +76,7 @@ ssh root@YOUR_SERVER_IP "cd /path/to/project && git fetch origin master && git r
 
 ## Server
 
-- **Host:** YOUR_SERVER_IP, 密码 `YOUR_SERVER_PASSWORD`
+- **Host:** YOUR_SERVER_IP, 密码 `YOUR_PASSWORD`
 - **Domain:** your-domain.com
 - **项目路径:** `/path/to/project`（宿主机），容器内 `/app/backend`（代码）+ `/path/to/project`（挂载）
 - **Container:** `fund-cockpit-api` (Python 3.11-slim, Flask dev server)
